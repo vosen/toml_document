@@ -12,6 +12,7 @@ use std::mem;
 use super::{Container, ContainerData, FormattedValue, IndirectChild, Key}; 
 use super::{RootTable, ValuesMap, TraversalPosition};
 use super::Value as DocValue;
+use super::{StringData, TableData};
 use Table;
 
 macro_rules! try {
@@ -373,18 +374,18 @@ impl<'a> Parser<'a> {
                 self.newline();
             } else {
                 // empty
-                return Some(DocValue::String {
+                return Some(DocValue::String(StringData {
                     escaped: String::new(),
                     raw: "\"\"".to_string()
-                })
+                }))
             }
         }
 
         self.finish_string(start, multiline).map(|x|
-            DocValue::String { 
+            DocValue::String(StringData { 
                 escaped: x,
                 raw: self.input[start..self.next_pos()].to_string()
-            }
+            })
         )
     }
 
@@ -507,10 +508,10 @@ impl<'a> Parser<'a> {
                 multiline = true;
                 newline = self.newline().map(|x| x.to_string());
             } else {
-                return Some(DocValue::String {
+                return Some(DocValue::String(StringData {
                     raw: "''".to_string(),
                     escaped: ret
-                })
+                }))
             }
         }
 
@@ -548,7 +549,7 @@ impl<'a> Parser<'a> {
         } else {
             format!("'{}'", ret)
         };
-        return Some(DocValue::String { raw: raw, escaped: ret });
+        return Some(DocValue::String(StringData { raw: raw, escaped: ret }));
     }
 
     fn number_or_datetime(&mut self, start: usize) -> Option<DocValue> {
@@ -828,7 +829,7 @@ impl<'a> Parser<'a> {
         match cur.direct.map(|x| x.kvp_index.entry(keys[idx].escaped.clone())) {
             Some(Entry::Occupied(mut entry)) => {
                 match &mut entry.get_mut().borrow_mut().value {
-                    &mut DocValue::InlineTable { ref mut values, .. } => {
+                    &mut DocValue::InlineTable(TableData { ref mut values, .. }) => {
                         let next = values.traverse();
                         return self.insert_exec_recurse(next, keys, idx+1, f);
                     }

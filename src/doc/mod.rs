@@ -1,4 +1,4 @@
-use std::cell::{RefCell, UnsafeCell};
+use std::cell::{RefCell, UnsafeCell, Ref};
 use std::collections::HashMap;
 use std::collections::hash_map::{Entry};
 use std::fmt::{Display, Error, Formatter};
@@ -8,6 +8,7 @@ use std::slice::Iter;
 use std::fmt::Write;
 
 pub mod parser;
+pub mod cursor;
 
 struct TraversalPosition<'a> {
     direct: Option<&'a mut ValuesMap>,
@@ -79,6 +80,16 @@ impl RootTable {
             direct: Some(&mut self.values),
             indirect: &mut self.container_index
         }
+    }
+
+    pub fn get(&self, key: &str) -> Option<cursor::ValueCursor> {
+        self.values
+            .get(key)
+            .or_else(|| {
+                self.container_index
+                    .get(key)
+                    .map_or(None, |child| child.get(key))
+            })
     }
 }
 
@@ -154,6 +165,10 @@ impl ValuesMap {
             }
         }
     }
+
+    fn get(&self, key: &str) -> Option<cursor::ValueCursor> {
+        self.kvp_index.get(key).map(|val| { FormattedValue::as_cursor(val.borrow()) })
+    }
 }
 
 // Value plus leading and trailing auxiliary text.
@@ -183,32 +198,48 @@ impl FormattedValue {
         self.value.serialize(buf);
         buf.push_str(&*self.trail);
     }
+
+    fn as_cursor<'a>(r: Ref<'a, Self>) -> cursor::ValueCursor<'a> {
+        cursor::ValueCursor::String(cursor::StringCursor(r))
+    }
+}
+
+struct StringData {
+    escaped: String,
+    raw: String
+}
+
+struct TableData {
+    values: ContainerData,
+    trail: String
 }
 
 enum Value {
-    String { escaped: String, raw: String },
+    String(StringData),
     Integer { parsed: i64, raw: String },
     Float { parsed: f64, raw: String },
     Boolean(bool),
     Datetime(String),
     Array { values: Vec<FormattedValue>, trail: String },
-    InlineTable { values: ContainerData, trail: String }
+    InlineTable(TableData)
 }
 
 impl Value {
     fn new_table(map: ValuesMap, trail: String) -> Value {
-        Value::InlineTable { 
-            values: ContainerData {
-                direct: map,
-                indirect: HashMap::new()
-            },
-            trail: trail
-        }
+        Value::InlineTable(
+            TableData { 
+                values: ContainerData {
+                    direct: map,
+                    indirect: HashMap::new()
+                },
+                trail: trail
+            }
+        )
     }
 
     fn as_simple_value(&self) -> super::Value {
         match self {
-            &Value::String { ref escaped, .. } => {
+            &Value::String(StringData { ref escaped, .. }) => {
                 super::Value::String(escaped.clone())
             }
             &Value::Integer { parsed, .. } => super::Value::Integer(parsed),
@@ -222,7 +253,7 @@ impl Value {
                     .collect();
                 super::Value::Array(values)
             }
-            &Value::InlineTable { ref values, .. } => { 
+            &Value::InlineTable(TableData { ref values, .. }) => { 
                 super::Value::Table(values.simplify().into_iter().collect())
             },
         }
@@ -230,33 +261,33 @@ impl Value {
 
     fn type_str(&self) -> &'static str {
         match *self {
-            Value::String {..} => "string",
+            Value::String(..) => "string",
             Value::Integer {..} => "integer",
             Value::Float {..} => "float",
             Value::Boolean(..) => "boolean",
             Value::Datetime(..) => "datetime",
             Value::Array {..} => "array",
-            Value::InlineTable {..} => "table",
+            Value::InlineTable(..) => "table",
         }
     }
 
-    fn is_table(&self) -> bool{
+    fn is_table(&self) -> bool {
         match *self {
-            Value::InlineTable {..} => true,
+            Value::InlineTable(..) => true,
             _ => false
         }
     }
 
     fn as_table(&mut self) -> &mut ContainerData {
         match *self {
-            Value::InlineTable { ref mut values, .. } => values,
+            Value::InlineTable(TableData { ref mut values, .. }) => values,
             _ => panic!()
         }
     }
 
     fn serialize(&self, buf: &mut String) {
         match *self {
-            Value::String { ref raw, .. } => buf.push_str(raw),
+            Value::String(StringData { ref raw, .. }) => buf.push_str(raw),
             Value::Integer { ref raw, .. } => buf.push_str(raw),
             Value::Float { ref raw, .. } => buf.push_str(raw),
             Value::Boolean(b) => buf.push_str(if b {"true"} else {"false"}),
@@ -270,7 +301,7 @@ impl Value {
                 buf.push_str(trail);
                 buf.push(']');
             }
-            Value::InlineTable { ref values, ref trail } => {
+            Value::InlineTable(TableData { ref values, ref trail }) => {
                 buf.push('{');
                 values.direct.serialize_inline(buf);
                 buf.push_str(trail);
@@ -331,6 +362,12 @@ impl IndirectChild {
         match *self {
             IndirectChild::ImplicitTable (..) => true,
             _ => false
+        }
+    }
+
+    fn get(&self, key: &str) -> Option<cursor::ValueCursor> {
+        match *self {
+            _ => panic!()
         }
     }
 }
