@@ -750,7 +750,10 @@ impl<'a> Parser<'a> {
                 if ret.len() > 0 {
                     trail_aux = format!(",{}", trail_aux);
                 }
-                return Some(DocValue::Array{ values: ret, trail: trail_aux})
+                return Some(DocValue::Array {
+                    values: ret,
+                    comma_trail: trail_aux
+                })
             }
 
             // Attempt to parse a value, triggering an error if it's the wrong
@@ -777,9 +780,8 @@ impl<'a> Parser<'a> {
             // Look for a comma. If we don't find one we're done
             if !self.eat(',') { break }
         }
-        let array_trail = self.eat_aux();
         if !self.expect(']') { return None }
-        return Some(DocValue::Array{ values: ret, trail: array_trail})
+        return Some(DocValue::Array{ values: ret, comma_trail: "".to_string()})
     }
 
     fn inline_table(&mut self, _start: usize) -> Option<DocValue> {

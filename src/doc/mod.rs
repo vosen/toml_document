@@ -220,7 +220,8 @@ enum Value {
     Float { parsed: f64, raw: String },
     Boolean(bool),
     Datetime(String),
-    Array { values: Vec<FormattedValue>, trail: String },
+    // trail is used only in case of trailing comma
+    Array { values: Vec<FormattedValue>, comma_trail: String },
     InlineTable(TableData)
 }
 
@@ -292,13 +293,13 @@ impl Value {
             Value::Float { ref raw, .. } => buf.push_str(raw),
             Value::Boolean(b) => buf.push_str(if b {"true"} else {"false"}),
             Value::Datetime(ref s) => buf.push_str(s),
-            Value::Array { ref values, ref trail } => {
+            Value::Array { ref values, ref comma_trail } => {
                 buf.push('[');
                 for (idx, value) in values.iter().enumerate() {
                     value.serialize(buf);
                     if idx != values.len() - 1 { buf.push(',') }
                 }
-                buf.push_str(trail);
+                buf.push_str(comma_trail);
                 buf.push(']');
             }
             Value::InlineTable(TableData { ref values, ref trail }) => {
@@ -545,4 +546,5 @@ mod tests {
     test_round_trip!(integer_with_sign, " foo = +10 ");
     test_round_trip!(underscore_integer, " foo = 1_000 ");
     test_round_trip!(inline_table, "\n a = { x = \"foo\"  , y = \"bar\"\t } ");
+    test_round_trip!(linebrak_array, "foo = [\n  \"bar\", \n  \"baz\" \n ]");
 }
