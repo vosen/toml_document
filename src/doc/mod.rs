@@ -1,4 +1,4 @@
-use std::cell::{RefCell, UnsafeCell, Ref};
+use std::cell::{RefCell, UnsafeCell, Ref, RefMut};
 use std::collections::HashMap;
 use std::collections::hash_map::{Entry};
 use std::fmt::{Display, Error, Formatter};
@@ -82,7 +82,7 @@ impl RootTable {
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<cursor::ValueCursor> {
+    pub fn get(&self, key: &str) -> Option<cursor::ValueRef> {
         self.values
             .get(key)
             .or_else(|| {
@@ -90,6 +90,15 @@ impl RootTable {
                     .get(key)
                     .map_or(None, |child| child.get(key))
             })
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
+        if let some @ Some(_)  = self.values.get_mut(key) {
+            return some
+        };
+        self.container_index
+            .get_mut(key)
+            .map_or(None, |child| child.get_mut(key))
     }
 }
 
@@ -166,8 +175,12 @@ impl ValuesMap {
         }
     }
 
-    fn get(&self, key: &str) -> Option<cursor::ValueCursor> {
-        self.kvp_index.get(key).map(|val| { FormattedValue::as_cursor(val.borrow()) })
+    fn get(&self, key: &str) -> Option<cursor::ValueRef> {
+        self.kvp_index.get(key).map(|val| { FormattedValue::as_cursor(val) })
+    }
+
+    fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
+        self.kvp_index.get_mut(key).map(|val| { FormattedValue::as_cursor_mut(val) })
     }
 }
 
@@ -199,14 +212,49 @@ impl FormattedValue {
         buf.push_str(&*self.trail);
     }
 
-    fn as_cursor<'a>(r: Ref<'a, Self>) -> cursor::ValueCursor<'a> {
-        cursor::ValueCursor::String(cursor::StringCursor(r))
+    fn as_cursor<'a>(r: &'a RefCell<Self>) -> cursor::ValueRef<'a> {
+        cursor::ValueRef::String(cursor::StringRef(r.borrow()))
+    }
+
+    fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> cursor::ValueRefMut<'a> {
+        cursor::ValueRefMut::String(cursor::StringRefMut(r))
     }
 }
 
 struct StringData {
     escaped: String,
     raw: String
+}
+
+impl StringData {
+    fn get(&self) -> &str {
+        &*self.escaped
+    }
+
+    fn set_checked(&mut self, s: String) {
+        self.raw = StringData::unescape(&*s);
+        self.escaped = s;
+    }
+
+    fn unescape(s: &str) -> String {
+        let mut buffer = String::with_capacity(s.len() + 2);
+        buffer.push('"');
+        for c in s.chars() {
+            match c as u32 {
+                0x08 => buffer.push_str(r#"\b"#),
+                0x09 => buffer.push_str(r#"\t"#),
+                0x0A => buffer.push_str(r#"\n"#),
+                0x0C => buffer.push_str(r#"\f"#),
+                0x0D => buffer.push_str(r#"\r"#),
+                0x22 => buffer.push_str(r#"\""#),
+                0x5C => buffer.push_str(r#"\\"#),
+                c if c <= 0x1F => drop(write!(buffer, r#"\u{:04X}"#, c)),
+                _ => buffer.push(c as char)
+            }
+        }
+        buffer.push('"');
+        buffer
+    }
 }
 
 struct TableData {
@@ -366,9 +414,15 @@ impl IndirectChild {
         }
     }
 
-    fn get(&self, key: &str) -> Option<cursor::ValueCursor> {
+    fn get(&self, key: &str) -> Option<cursor::ValueRef> {
         match *self {
-            _ => panic!()
+            _ => unimplemented!()
+        }
+    }
+
+    fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
+        match *self {
+            _ => unimplemented!()
         }
     }
 }

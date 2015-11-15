@@ -68,6 +68,8 @@ mod decoder;
 #[allow(missing_docs)]
 pub mod document {
     pub use doc::RootTable;
+    pub use doc::cursor::{StringRef, ValueRef, TableRef, ValueMarkup};
+    pub use doc::cursor::{StringRefMut, ValueRefMut};
 }
 
 /// Representation of a TOML value.
