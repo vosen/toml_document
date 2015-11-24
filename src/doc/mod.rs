@@ -189,6 +189,7 @@ impl ValuesMap {
 //    +---++-------++---+
 //      |      |      |
 //    lead   value  trail
+#[doc(hidden)] pub
 struct FormattedValue {
     value: Value,
     // auxiliary text between the equality sign and the value
@@ -213,11 +214,11 @@ impl FormattedValue {
     }
 
     fn as_cursor<'a>(r: &'a RefCell<Self>) -> cursor::ValueRef<'a> {
-        cursor::ValueRef::String(cursor::StringRef(r.borrow()))
+        cursor::ValueRef::_new_string(&*r.borrow())
     }
 
     fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> cursor::ValueRefMut<'a> {
-        cursor::ValueRefMut::String(cursor::StringRefMut(r))
+        cursor::ValueRefMut::_new_string(&mut*r.borrow_mut())
     }
 }
 
