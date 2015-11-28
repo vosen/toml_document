@@ -11,7 +11,8 @@ use super::transmute_lifetime_mut;
 static MALFORMED_LEAD_MSG: &'static str = "Malformed leading trivia";
 static MALFORMED_TRAIL_MSG: &'static str = "Malformed trailing trivia";
 
-use super::{StringData, TableData, Container, IndirectChild, FormattedValue, Value};
+use super::{StringData, TableData, Container, IndirectChild, FormattedValue};
+use super::{Value};
 
 pub enum ValueRef<'a> {
     String(&'a StringNode),
@@ -82,6 +83,14 @@ impl<'a> TableRef<'a> {
             Table::Explicit(ref data) => data.data.get(key),
         }
     }
+
+    pub fn len(&self) -> usize {
+        match self.data {
+            Table::Inline(ref data) => data.values.len(),
+            Table::Implicit(ref map) => map.len(),
+            Table::Explicit(ref data) => data.data.len(),
+        }
+    }
 }
 
 pub struct TableRefMut<'a> {
@@ -89,12 +98,18 @@ pub struct TableRefMut<'a> {
     data: TableMut<'a>
 }
 
+pub enum TableMut<'a> {
+    Inline(&'a mut TableData),
+    Implicit(&'a mut HashMap<String, IndirectChild>),
+    Explicit(&'a RefCell<Container>)
+}
+
 impl<'a> TableRefMut<'a> {
-    pub fn as_ref(self) -> TableRef<'a> {
+    pub fn as_ref<'b>(&'b self) -> TableRef<'b> {
         let inner = match self.data {
-            TableMut::Inline(data) => Table::Inline(&*data),
-            TableMut::Implicit(map) => Table::Implicit(&*map),
-            TableMut::Explicit(data) => Table::Explicit(data.borrow()),
+            TableMut::Inline(ref data) => Table::Inline(data),
+            TableMut::Implicit(ref map) => Table::Implicit(&*map),
+            TableMut::Explicit(ref data) => Table::Explicit(data.borrow()),
         };
         TableRef { data: inner }
     }
@@ -113,12 +128,6 @@ impl<'a> TableRefMut<'a> {
             }
         }
     }
-}
-
-pub enum TableMut<'a> {
-    Inline(&'a mut TableData),
-    Implicit(&'a mut HashMap<String, IndirectChild>),
-    Explicit(&'a RefCell<Container>)
 }
 
 pub struct ValueMarkup(FormattedValue);

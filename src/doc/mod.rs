@@ -108,6 +108,10 @@ impl RootTable {
             .get_mut(key)
             .map_or(None, |child| child.get_mut(key))
     }
+
+    pub fn len(&self) -> usize {
+        self.values.len() + self.container_index.len()
+    }
 }
 
 // Order-preserving map of values that are directly contained in
@@ -184,11 +188,19 @@ impl ValuesMap {
     }
 
     fn get(&self, key: &str) -> Option<cursor::ValueRef> {
-        self.kvp_index.get(key).map(|val| { FormattedValue::as_cursor(val) })
+        self.kvp_index
+            .get(key)
+            .map(|val| { FormattedValue::as_cursor(val) })
     }
 
     fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
-        self.kvp_index.get_mut(key).map(|val| { FormattedValue::as_cursor_mut(val) })
+        self.kvp_index
+            .get_mut(key)
+            .map(|val| { FormattedValue::as_cursor_mut(val) })
+    }
+
+    fn len(&self) -> usize {
+        self.kvp_index.len()
     }
 }
 
@@ -604,6 +616,10 @@ impl ContainerData {
         self.indirect
             .get_mut(key)
             .map_or(None, |child| child.get_mut(key))
+    }
+
+    fn len(&self) -> usize {
+        self.direct.len() + self.indirect.len()
     }
 }
 
