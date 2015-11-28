@@ -6,6 +6,8 @@ use std::mem::transmute;
 use std::str::Chars;
 use std::iter::Peekable;
 
+use super::transmute_lifetime_mut;
+
 static MALFORMED_LEAD_MSG: &'static str = "Malformed leading trivia";
 static MALFORMED_TRAIL_MSG: &'static str = "Malformed trailing trivia";
 
@@ -25,6 +27,7 @@ impl<'a> ValueRef<'a> {
 
 pub enum ValueRefMut<'a> {
     String(&'a mut StringNode),
+    Table(TableRefMut<'a>),
 }
 
 impl<'a> ValueRefMut<'a> {
@@ -61,13 +64,61 @@ impl StringNode {
 }
 
 pub struct TableRef<'a> {
+    #[doc(hidden)] pub
     data: Table<'a>
 }
 
-enum Table<'a> {
+pub enum Table<'a> {
     Inline(&'a TableData),
     Implicit(&'a HashMap<String, IndirectChild>),
-    Explicit(&'a Container)
+    Explicit(Ref<'a, Container>)
+}
+
+impl<'a> TableRef<'a> {
+    pub fn get(&self, key: &str) -> Option<ValueRef> {
+        match self.data {
+            Table::Inline(ref data) => data.values.get(key),
+            Table::Implicit(ref map) => map.get(key).map(|c| c.as_cursor()),
+            Table::Explicit(ref data) => data.data.get(key),
+        }
+    }
+}
+
+pub struct TableRefMut<'a> {
+    #[doc(hidden)] pub
+    data: TableMut<'a>
+}
+
+impl<'a> TableRefMut<'a> {
+    pub fn as_ref(self) -> TableRef<'a> {
+        let inner = match self.data {
+            TableMut::Inline(data) => Table::Inline(&*data),
+            TableMut::Implicit(map) => Table::Implicit(&*map),
+            TableMut::Explicit(data) => Table::Explicit(data.borrow()),
+        };
+        TableRef { data: inner }
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Option<ValueRefMut> {
+        match self.data {
+            TableMut::Inline(ref mut data) => data.values.get_mut(key),
+            TableMut::Implicit(ref mut map) => {
+                 map.get_mut(key).map(|c| c.as_cursor_mut())
+            }
+            TableMut::Explicit(ref mut data) => {
+                let mut container = unsafe { 
+                    transmute_lifetime_mut(&mut data.borrow_mut().data)
+                };
+                container.get_mut(key)
+            }
+        }
+    }
+}
+
+pub enum TableMut<'a> {
+    Inline(&'a mut TableData),
+    Implicit(&'a mut HashMap<String, IndirectChild>),
+    Explicit(&'a RefCell<Container>)
 }
 
 pub struct ValueMarkup(FormattedValue);

@@ -69,7 +69,7 @@ mod decoder;
 pub mod document {
     pub use doc::RootTable;
     pub use doc::cursor::{StringNode, ValueRef, TableRef, ValueMarkup};
-    pub use doc::cursor::{ValueRefMut};
+    pub use doc::cursor::{ValueRefMut, TableRefMut};
 }
 
 /// Representation of a TOML value.

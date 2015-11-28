@@ -10,6 +10,14 @@ use std::fmt::Write;
 pub mod parser;
 pub mod cursor;
 
+unsafe fn transmute_lifetime<'a, 'b, T>(x: &'a T) -> &'b T {
+    ::std::mem::transmute(x)
+}
+
+unsafe fn transmute_lifetime_mut<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
+    ::std::mem::transmute(x)
+}
+
 struct TraversalPosition<'a> {
     direct: Option<&'a mut ValuesMap>,
     indirect: &'a mut HashMap<String, IndirectChild>
@@ -88,13 +96,13 @@ impl RootTable {
             .or_else(|| {
                 self.container_index
                     .get(key)
-                    .map_or(None, |child| child.get(key))
+                    .map_or(None, |child| Some(child.as_cursor()))
             })
     }
 
     pub fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
         if let some @ Some(_)  = self.values.get_mut(key) {
-            return some
+            return some;
         };
         self.container_index
             .get_mut(key)
@@ -415,15 +423,68 @@ impl IndirectChild {
         }
     }
 
+    fn as_cursor(&self) -> cursor::ValueRef {
+        match self {
+            &IndirectChild::ImplicitTable(ref map) => {
+                cursor::ValueRef::Table(
+                    cursor::TableRef {
+                        data: cursor::Table::Implicit(map)
+                    }
+                )
+            }
+            &IndirectChild::ExplicitTable(ref container) => {
+                cursor::ValueRef::Table(
+                    cursor::TableRef {
+                        data: cursor::Table::Explicit(container.borrow())
+                    }
+                )
+            }
+            &IndirectChild::Array(ref data) => unimplemented!()
+        }
+    }
+
+    fn as_cursor_mut(&mut self) -> cursor::ValueRefMut {
+        match self {
+            &mut IndirectChild::ImplicitTable(ref mut map) => {
+                cursor::ValueRefMut::Table(
+                    cursor::TableRefMut {
+                        data: cursor::TableMut::Implicit(map)
+                    }
+                )
+            }
+            &mut IndirectChild::ExplicitTable(ref container) => {
+                cursor::ValueRefMut::Table(
+                    cursor::TableRefMut {
+                        data: cursor::TableMut::Explicit(&container)
+                    }
+                )
+            }
+            &mut IndirectChild::Array(ref data) => unimplemented!()
+        }
+    }
+
     fn get(&self, key: &str) -> Option<cursor::ValueRef> {
-        match *self {
-            _ => unimplemented!()
+        match self {
+            &IndirectChild::ImplicitTable(ref map) => {
+                map.get(key).map(IndirectChild::as_cursor)
+            }
+            &IndirectChild::ExplicitTable(ref container) => {
+                unsafe { transmute_lifetime(&container.borrow().data) }.get(key)
+            }
+            &IndirectChild::Array(ref data) => unimplemented!()
         }
     }
 
     fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
         match *self {
-            _ => unimplemented!()
+            IndirectChild::ImplicitTable(ref mut map) => {
+                map.get_mut(key).map(IndirectChild::as_cursor_mut)
+            }
+            IndirectChild::ExplicitTable(ref mut container) => {
+                let container_data = &mut container.borrow_mut().data;
+                unsafe { transmute_lifetime_mut(container_data) }.get_mut(key)
+            }
+            IndirectChild::Array(ref data) => unimplemented!()
         }
     }
 }
@@ -524,6 +585,25 @@ impl ContainerData {
             direct: Some(&mut self.direct),
             indirect: &mut self.indirect
         }
+    }
+
+    fn get(&self, key: &str) -> Option<cursor::ValueRef> {
+        self.direct
+            .get(key)
+            .or_else(|| {
+                self.indirect
+                    .get(key)
+                    .map_or(None, |child| child.get(key))
+            })
+    }
+
+    fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
+        if let some @ Some(_) =  self.direct.get_mut(key) {
+            return some;
+        };
+        self.indirect
+            .get_mut(key)
+            .map_or(None, |child| child.get_mut(key))
     }
 }
 
