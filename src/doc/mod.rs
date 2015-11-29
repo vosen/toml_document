@@ -6,9 +6,57 @@ use std::rc::Rc;
 use std::iter::Map;
 use std::slice::Iter;
 use std::fmt::Write;
+use std::str::Chars;
+use std::iter::Peekable;
 
 pub mod parser;
 pub mod cursor;
+
+static MALFORMED_LEAD_MSG: &'static str = "Malformed leading trivia";
+static MALFORMED_TRAIL_MSG: &'static str = "Malformed trailing trivia";
+
+fn check_ws(s: &str, error: &'static str) {
+    for c in s.chars() {
+        match c {
+            ' ' | '\t' => { },
+            _ => panic!(error)
+        }
+    }
+}
+
+fn eat_before_newline(mut chars: Peekable<Chars>) -> Peekable<Chars> {
+    while chars.peek().is_some() {
+        match *chars.peek().unwrap() {
+            '\n' => break,
+            '\r' => {
+                let before_cr = chars.clone();
+                chars.next();
+                if chars.peek() == Some(&'\n') {
+                    return before_cr;
+                } else {
+                    continue;
+                }
+            },
+            _ => { }
+        }
+        chars.next();
+    }
+    chars
+}
+
+fn eat_newline<'a>(mut chars: Peekable<Chars<'a>>,
+               error: &'static str) -> Peekable<Chars<'a>> {
+    match chars.next().unwrap_or_else(|| panic!(error)) {
+        '\n' => { },
+        '\r' => assert!(chars.next() == Some('\n'), error),
+        _ => panic!(error)
+    }
+    chars
+}
+
+fn eat_eof(mut chars: Peekable<Chars>, error: &'static str) {
+    assert!(chars.next() == None, error);
+}
 
 unsafe fn transmute_lifetime<'a, 'b, T>(x: &'a T) -> &'b T {
     ::std::mem::transmute(x)
@@ -128,9 +176,9 @@ impl RootTable {
 //         +
 struct ValuesMap {
     // key-value pairs stored in the order they appear in a document
-    kvp_list: Vec<(Key, Rc<RefCell<FormattedValue>>)>,
+    kvp_list: Vec<Rc<RefCell<ValueNode>>>,
     // Index for quick traversal.
-    kvp_index: HashMap<String, Rc<RefCell<FormattedValue>>>,
+    kvp_index: HashMap<String, Rc<RefCell<ValueNode>>>,
     trail: String
 }
 
@@ -143,44 +191,58 @@ impl ValuesMap {
         }
     }
 
-    fn insert(&mut self, key: Key, value: FormattedValue) -> bool {
-        let value = Rc::new(RefCell::new(value));
-        match self.kvp_index.entry(key.escaped.clone()) {
+    fn insert(&mut self, key: FormattedKey, value: FormattedValue) -> bool {
+        let key_text = key.escaped.clone();
+        let node = Rc::new(RefCell::new(ValueNode{
+            key: key,
+            value: value
+        }));
+        match self.kvp_index.entry(key_text) {
             Entry::Occupied(_) => return false,
             Entry::Vacant(entry) => {
-                entry.insert(value.clone())
+                entry.insert(node.clone())
             }
         };
-        self.kvp_list.push((key,value));
+        self.kvp_list.push(node);
         true
     }
 
     fn set_last_value_trail(&mut self, s: String) {
-        self.kvp_list.last().as_ref().unwrap().1.borrow_mut().trail = s;
+        self.kvp_list
+            .last()
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .value
+            .markup
+            .trail = s;
     }
 
     fn simplify(&self) -> Vec<(String, super::Value)> {
         self.kvp_list
             .iter()
-            .map(|&(ref k, ref v)| {
-                (k.escaped.clone(), v.borrow().value.as_simple_value())
+            .map(|ref node| {
+                let node = node.borrow();
+                (node.key.escaped.clone(), node.value.value.as_simple_value())
             })
             .collect()
     }
 
     fn serialize(&self, buf: &mut String) {
-        for &(ref key, ref value) in self.kvp_list.iter() {
-            key.serialize(buf);
+        for ref node in self.kvp_list.iter() {
+            let node = node.borrow();
+            node.key.serialize(buf);
             buf.push('=');
-            value.borrow().serialize(buf);
+            node.value.serialize(buf);
         }
     }
 
     fn serialize_inline(&self, buf: &mut String) {
-        for (idx, &(ref key, ref value)) in self.kvp_list.iter().enumerate() {
-            key.serialize(buf);
+        for (idx, ref node) in self.kvp_list.iter().enumerate() {
+            let node = node.borrow();
+            node.key.serialize(buf);
             buf.push('=');
-            value.borrow().serialize(buf);
+            node.value.serialize(buf);
             if idx < self.kvp_list.len() - 1 {
                 buf.push(',');
             }
@@ -190,13 +252,13 @@ impl ValuesMap {
     fn get(&self, key: &str) -> Option<cursor::ValueRef> {
         self.kvp_index
             .get(key)
-            .map(|val| { FormattedValue::as_cursor(val) })
+            .map(|val| { ValueNode::as_cursor(val) })
     }
 
     fn get_mut(&mut self, key: &str) -> Option<cursor::ValueRefMut> {
         self.kvp_index
             .get_mut(key)
-            .map(|val| { FormattedValue::as_cursor_mut(val) })
+            .map(|val| { ValueNode::as_cursor_mut(val) })
     }
 
     fn len(&self) -> usize {
@@ -205,40 +267,114 @@ impl ValuesMap {
 }
 
 // Value plus leading and trailing auxiliary text.
-// a =     "qwertyu"   \n
-//    +---++-------++---+
-//      |      |      |
-//    lead   value  trail
+//   a  =  "qwertyu" \n
+// +---+ +------------+
+//   |         |
+//  key      value
 #[doc(hidden)] pub
-struct FormattedValue {
-    value: Value,
-    // auxiliary text between the equality sign and the value
-    lead: String,
-    // auxiliary text after the value, up to and including the first newline
-    trail: String
+struct ValueNode {
+    key: FormattedKey,
+    value: FormattedValue
 }
 
-impl FormattedValue {
-    fn new(lead: String, v: Value) -> FormattedValue {
-        FormattedValue {
-            value: v,
-            lead: lead,
-            trail: String::new()
-        }
-    }
-
-    fn serialize(&self, buf: &mut String) {
-        buf.push_str(&*self.lead);
-        self.value.serialize(buf);
-        buf.push_str(&*self.trail);
-    }
-
+impl ValueNode {
     fn as_cursor<'a>(r: &'a RefCell<Self>) -> cursor::ValueRef<'a> {
         cursor::ValueRef::_new_string(&*r.borrow())
     }
 
     fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> cursor::ValueRefMut<'a> {
         cursor::ValueRefMut::_new_string(&mut*r.borrow_mut())
+    }
+}
+
+// Value plus leading and trailing auxiliary text.
+// a =            "qwertyu"          \n
+//    +----------++-------++----------+
+//         |          |          |
+//    markup.lead   value  markup.trail
+#[doc(hidden)] pub
+struct FormattedValue {
+    value: Value,
+    markup: ValueMarkup
+}
+
+impl FormattedValue {
+    fn new(lead: String, v: Value) -> FormattedValue {
+        FormattedValue {
+            value: v,
+            markup: ValueMarkup {
+                lead: lead,
+                trail: String::new()
+            }
+        }
+    }
+
+    fn serialize(&self, buf: &mut String) {
+        buf.push_str(&*self.markup.lead);
+        self.value.serialize(buf);
+        buf.push_str(&*self.markup.trail);
+    }
+}
+
+pub struct ValueMarkup {
+    // auxiliary text between the equality sign and the value
+    lead: String,
+    // auxiliary text after the value, up to and including the first newline
+    trail: String
+}
+
+impl ValueMarkup {
+    pub fn new(lead: String, trail: String) -> ValueMarkup {
+        let mut value = ValueMarkup {
+            lead: String::new(),
+            trail: String::new(),
+        };
+        value.set_leading_trivia(lead);
+        value.set_trailing_trivia(trail);
+        value
+    }
+
+    pub fn get_leading_trivia(&self) -> &str {
+        &self.lead
+    }
+
+    pub fn set_leading_trivia(&mut self, s: String) {
+        check_ws(&*s, MALFORMED_LEAD_MSG);
+        self.lead = s;
+    }
+
+    pub fn get_trailing_trivia(&self) -> &str {
+        &self.trail
+    }
+
+    pub fn set_trailing_trivia(&mut self, s: String) {
+        ValueMarkup::check_trailing_trivia(&*s);
+        self.trail = s;
+    }
+
+    fn check_trailing_trivia(s: &str) {
+        let chars = s.chars().peekable();
+        let chars = ValueMarkup::eat_ws(chars);
+        ValueMarkup::check_comment_or_newline(chars);
+    }
+
+    fn eat_ws(mut chars: Peekable<Chars>) -> Peekable<Chars> {
+        while chars.peek().is_some() {
+            match *chars.peek().unwrap() {
+                ' ' | '\t' => { },
+                _ => break
+            }
+            chars.next();
+        }
+        chars
+    }
+
+    fn check_comment_or_newline(mut chars: Peekable<Chars>) {
+        if chars.peek() == Some(&'#') {
+            chars = eat_before_newline(chars);
+        }
+        chars = eat_newline(chars, MALFORMED_TRAIL_MSG);
+        eat_eof(chars, MALFORMED_TRAIL_MSG);
     }
 }
 
@@ -289,7 +425,6 @@ enum Value {
     Float { parsed: f64, raw: String },
     Boolean(bool),
     Datetime(String),
-    // trail is used only in case of trailing comma
     Array { values: Vec<FormattedValue>, comma_trail: String },
     InlineTable(TableData)
 }
@@ -508,13 +643,13 @@ struct Container {
     //   +-----+ +-----+
     //      |       |
     //   keys[0] keys[1]
-    keys: Vec<Key>,
+    keys: Vec<FormattedKey>,
     kind: ContainerKind,
     lead: String,
 }
 
 impl Container {
-    fn new_array(data: ContainerData, ks: Vec<Key>, lead: String)
+    fn new_array(data: ContainerData, ks: Vec<FormattedKey>, lead: String)
                      -> Container {
         Container { 
             data: data,
@@ -524,7 +659,7 @@ impl Container {
         }
     }
 
-    fn new_table(data: ContainerData, ks: Vec<Key>, lead: String)
+    fn new_table(data: ContainerData, ks: Vec<FormattedKey>, lead: String)
                      -> Container {
         Container { 
             data: data,
@@ -629,31 +764,36 @@ enum ContainerKind {
     Array,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-struct Key {
+pub struct FormattedKey {
     escaped: String,
     raw: Option<String>,
+    markup: KeyMarkup
+}
+
+struct KeyMarkup {
     lead: String,
     trail: String
 }
 
-impl Key {
-    fn new(lead: String, key: (String, Option<String>), trail: String) -> Key {
-        Key {
+impl FormattedKey {
+    fn new(lead: String, key: (String, Option<String>), trail: String) -> FormattedKey {
+        FormattedKey {
             escaped: key.0,
             raw: key.1,
-            lead: lead,
-            trail: trail,
+            markup: KeyMarkup {
+                lead: lead,
+                trail: trail,
+            }
         }
     }
 
     fn serialize(&self, buf: &mut String) {
-        buf.push_str(&*self.lead);
+        buf.push_str(&*self.markup.lead);
         match self.raw {
             Some(ref str_buf) => buf.push_str(&*str_buf),
             None => buf.push_str(&*self.escaped)
         };
-        buf.push_str(&*self.trail);
+        buf.push_str(&*self.markup.trail);
     }
 }
 

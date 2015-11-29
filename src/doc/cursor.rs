@@ -6,13 +6,11 @@ use std::mem::transmute;
 use std::str::Chars;
 use std::iter::Peekable;
 
-use super::transmute_lifetime_mut;
-
-static MALFORMED_LEAD_MSG: &'static str = "Malformed leading trivia";
-static MALFORMED_TRAIL_MSG: &'static str = "Malformed trailing trivia";
+use super::{check_ws, eat_before_newline, eat_newline, transmute_lifetime_mut};
+use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
 
 use super::{StringData, TableData, Container, IndirectChild, FormattedValue};
-use super::{Value};
+use super::{Value, ValueNode, ValueMarkup, FormattedKey};
 
 pub enum ValueRef<'a> {
     String(&'a StringNode),
@@ -21,7 +19,7 @@ pub enum ValueRef<'a> {
 
 impl<'a> ValueRef<'a> {
     #[doc(hidden)] pub
-    fn _new_string<'x>(v: &'x FormattedValue) -> ValueRef<'a> {
+    fn _new_string<'x>(v: &'x ValueNode) -> ValueRef<'a> {
         ValueRef::String(unsafe  { transmute(v) })
     }
 }
@@ -33,34 +31,94 @@ pub enum ValueRefMut<'a> {
 
 impl<'a> ValueRefMut<'a> {
     #[doc(hidden)] pub
-    fn _new_string<'x>(v: &'x mut FormattedValue) -> ValueRefMut<'a> {
+    fn _new_string<'x>(v: &'x mut ValueNode) -> ValueRefMut<'a> {
         ValueRefMut::String(unsafe  { transmute(v) })
     }
 }
 
-pub struct StringNode(FormattedValue);
+pub struct StringNode(ValueNode);
 
 impl StringNode {
     pub fn get(&self) -> &str {
-        match self.0.value {
+        match self.0.value.value {
             Value::String(ref data) => &data.get(),
             _ => unreachable!()
         }
     }
 
     pub fn set(&mut self, s: String) {
-        match &mut self.0.value {
+        match &mut self.0.value.value {
             &mut Value::String(ref mut data) => data.set_checked(s),
             _ => unreachable!()
         }
     }
-
     pub fn markup(&self) -> &ValueMarkup {
-        unsafe { transmute(self) }
+        &self.0.value.markup
     }
 
     pub fn markup_mut(&mut self) -> &mut ValueMarkup {
-        unsafe { transmute(self) }
+        &mut self.0.value.markup
+    }
+    pub fn key(&self) -> &KeyMarkup {
+        unsafe{ transmute(&self.0.key) }
+    }
+
+    pub fn key_mut(&mut self) -> &mut KeyMarkup {
+        unsafe{ transmute(&mut self.0.key) }
+    }
+
+    pub fn get_raw(&self) -> &str {
+        match self.0.value.value {
+            Value::String(ref data) => &data.raw,
+            _ => unreachable!()
+        }
+    }
+}
+
+pub struct KeyMarkup(FormattedKey);
+
+impl KeyMarkup {
+    pub fn get_leading_trivia(&self) -> &str {
+        &self.0.markup.lead
+    }
+
+    pub fn set_leading_trivia(&mut self, s: String) {
+        KeyMarkup::check_leading_trivia(&*s);
+        self.0.markup.lead = s;
+    }
+
+    fn check_leading_trivia(s: &str) {
+        let mut chars = s.chars().peekable();
+        loop {
+            let c  = chars.next();
+            match c {
+                Some(c) => { match c {
+                    ' ' | '\t' => { },
+                    '#' => { 
+                        chars = eat_before_newline(chars);
+                        chars = eat_newline(chars, MALFORMED_LEAD_MSG);
+                    },
+                    _ => panic!(super::MALFORMED_LEAD_MSG)
+                }}
+                None => break,
+            }
+        }
+    }
+
+    pub fn get_trailing_trivia(&self) -> &str {
+        &self.0.markup.trail
+    }
+
+    pub fn set_trailing_trivia(&mut self, s: String) {
+        check_ws(&*s, super::MALFORMED_TRAIL_MSG);
+        self.0.markup.trail = s;
+    }
+
+    pub fn get_raw(&self) -> &str {
+        match self.0.raw {
+            Some(ref raw) => &*raw,
+            None => &*self.0.escaped
+        }
     }
 }
 
@@ -126,96 +184,6 @@ impl<'a> TableRefMut<'a> {
                 };
                 container.get_mut(key)
             }
-        }
-    }
-}
-
-pub struct ValueMarkup(FormattedValue);
-
-impl ValueMarkup {
-    pub fn get_leading_trivia(&self) -> &str {
-        &self.0.lead
-    }
-
-    pub fn set_leading_trivia(&mut self, s: String) {
-        for c in s.chars() {
-            match c {
-                ' ' | '\t' => { },
-                _ => panic!(MALFORMED_LEAD_MSG)
-            }
-        }
-        self.0.lead = s;
-    }
-
-    pub fn get_trailing_trivia(&self) -> &str {
-        &self.0.trail
-    }
-
-    pub fn set_trailing_trivia(&mut self, s: String) {
-        ValueMarkup::check_trailing_trivia(&*s);
-        self.0.trail = s;
-    }
-
-    fn check_trailing_trivia(s: &str) {
-        let chars = s.chars().peekable();
-        let chars = ValueMarkup::eat_ws(chars);
-        ValueMarkup::check_comment_or_newline(chars);
-    }
-
-    fn eat_ws(mut chars: Peekable<Chars>) -> Peekable<Chars> {
-        while chars.peek().is_some() {
-            match *chars.peek().unwrap() {
-                ' ' | '\t' => { },
-                _ => break
-            }
-            chars.next();
-        }
-        chars
-    }
-
-    fn eat_comment(mut chars: Peekable<Chars>) -> Peekable<Chars> {
-        if chars.peek() != Some(&'#') { return chars; }
-        while chars.peek().is_some() {
-            match *chars.peek().unwrap() {
-                '\n' => break,
-                '\r' => {
-                    let before_cr = chars.clone();
-                    chars.next();
-                    if chars.peek() == Some(&'\n') {
-                        return before_cr;
-                    } else {
-                        continue;
-                    }
-                },
-                _ => { }
-            }
-            chars.next();
-        }
-        chars
-    }
-
-    fn check_comment_or_newline(mut chars: Peekable<Chars>) {
-        chars = ValueMarkup::eat_comment(chars);
-        // we are either at newline or end of string
-        match chars.next().unwrap_or_else(|| panic!(MALFORMED_TRAIL_MSG)) {
-            '\n' => assert!(chars.next().is_none(), MALFORMED_TRAIL_MSG),
-            '\r' => {
-                assert!(chars.next() == Some('\n'), MALFORMED_TRAIL_MSG);
-                assert!(chars.next().is_none(), MALFORMED_TRAIL_MSG);
-            }
-            _ => panic!(MALFORMED_TRAIL_MSG)
-        }
-    }
-
-    pub fn get_unescaped_value(&self) -> Option<&str> {
-        match self.0.value {
-            Value::String(ref data) => Some(&data.raw),
-            Value::Integer { ref raw, .. } => Some(&raw),
-            Value::Float { ref raw, .. } => Some(&raw),
-            Value::Datetime(ref val) => None,
-            Value::Boolean(_) => None,
-            Value::Array { .. } => None,
-            Value::InlineTable(_) => None,
         }
     }
 }

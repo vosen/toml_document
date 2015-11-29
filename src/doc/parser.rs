@@ -9,7 +9,7 @@ use std::cell::{RefCell};
 use std::rc::Rc;
 use std::mem;
 
-use super::{Container, ContainerData, FormattedValue, IndirectChild, Key}; 
+use super::{Container, ContainerData, FormattedValue, FormattedKey, IndirectChild}; 
 use super::{RootTable, ValuesMap, TraversalPosition};
 use super::Value as DocValue;
 use super::{StringData, TableData};
@@ -241,7 +241,7 @@ impl<'a> Parser<'a> {
                 loop {
                     let key_lead_aux = self.eat_ws();
                     if let Some(s) = self.key_name() {
-                        keys.push(Key::new(key_lead_aux, s, self.eat_ws()));
+                        keys.push(FormattedKey::new(key_lead_aux, s, self.eat_ws()));
                     }
                     if self.eat(']') {
                         if array && !self.expect(']') { return None }
@@ -322,7 +322,7 @@ impl<'a> Parser<'a> {
                 Some(s) => s,
                 None => return false
             };
-            let key = Key::new(self.take_aux(), key, self.eat_ws());
+            let key = FormattedKey::new(self.take_aux(), key, self.eat_ws());
             if !self.expect('=') { return false }
             let value = match self.value() {
                 Some(value) => value,
@@ -772,8 +772,8 @@ impl<'a> Parser<'a> {
                 });
             } else {
                 type_str = Some(expected);
-                value.lead = lead;
-                value.trail = self.eat_aux();
+                value.markup.lead = lead;
+                value.markup.trail = self.eat_aux();
                 ret.push(value);
             }
 
@@ -794,10 +794,10 @@ impl<'a> Parser<'a> {
         loop {
             let lo = self.next_pos();
             let key_name = try!(self.key_name());
-            let key = Key::new(trail.clone(), key_name, self.eat_ws());
+            let key = FormattedKey::new(trail.clone(), key_name, self.eat_ws());
             if !self.expect('=') { return None }
             let mut value = try!(self.value());
-            value.trail = self.eat_ws();
+            value.markup.trail = self.eat_ws();
             self.insert(&mut ret, key, value, lo);
             if self.eat('}') { break }
             if !self.expect(',') { return None }
@@ -806,7 +806,7 @@ impl<'a> Parser<'a> {
         return Some(DocValue::new_table(ret, String::new()))
     }
 
-    fn insert(&mut self, into: &mut ValuesMap, key: Key,
+    fn insert(&mut self, into: &mut ValuesMap, key: FormattedKey,
               value: FormattedValue, key_lo: usize) {
         let key_text =  key.escaped.clone();
         if !into.insert(key, value) {
@@ -820,17 +820,17 @@ impl<'a> Parser<'a> {
 
     fn insert_exec_recurse<F, U>(&mut self,
                                  cur: TraversalPosition,
-                                 keys: Vec<Key>,
+                                 keys: Vec<FormattedKey>,
                                  idx: usize,
                                  f:F)
                                  -> Option<U>
-        where F: FnOnce(&mut Parser, TraversalPosition, Vec<Key>) -> U {
+        where F: FnOnce(&mut Parser, TraversalPosition, Vec<FormattedKey>) -> U {
         if idx == keys.len() - 1 { 
             return Some(f(self, cur, keys));
         }
         match cur.direct.map(|x| x.kvp_index.entry(keys[idx].escaped.clone())) {
             Some(Entry::Occupied(mut entry)) => {
-                match &mut entry.get_mut().borrow_mut().value {
+                match &mut entry.get_mut().borrow_mut().value.value {
                     &mut DocValue::InlineTable(TableData { ref mut values, .. }) => {
                         let next = values.traverse();
                         return self.insert_exec_recurse(next, keys, idx+1, f);
@@ -901,11 +901,11 @@ impl<'a> Parser<'a> {
     // inserting missing containers on the go
     fn insert_exec_container<F, U>(&mut self,
                                    r: &mut RootTable,
-                                   keys: Vec<Key>,
+                                   keys: Vec<FormattedKey>,
                                    f:F) -> Option<U>
                                    where F: FnOnce(&mut Parser,
                                                    TraversalPosition,
-                                                   Vec<Key>) -> U {
+                                                   Vec<FormattedKey>) -> U {
         self.insert_exec_recurse(r.traverse(), keys, 0, f)
     }
 
@@ -948,11 +948,11 @@ impl<'a> Parser<'a> {
         Some(container)
     }
 
-    fn last_key_text(keys: &Vec<Key>) -> String {
+    fn last_key_text(keys: &Vec<FormattedKey>) -> String {
         keys.last().as_ref().unwrap().escaped.clone()
     }
 
-    fn insert_table(&mut self, root: &mut RootTable, keys: Vec<Key>, 
+    fn insert_table(&mut self, root: &mut RootTable, keys: Vec<FormattedKey>, 
                     table: ContainerData, lead: String) {
         let added = self.insert_exec_container(root, keys, |this, seg, keys| {
             let key_text = Parser::last_key_text(&keys);
@@ -962,6 +962,7 @@ impl<'a> Parser<'a> {
                                       .get(&*key_text)
                                       .unwrap()
                                       .borrow()
+                                      .value
                                       .value
                                       .is_table();
                     let error_msg  = if is_table {
@@ -1025,7 +1026,7 @@ impl<'a> Parser<'a> {
 
 
 
-    fn insert_array(&mut self, root: &mut RootTable, keys: Vec<Key>,
+    fn insert_array(&mut self, root: &mut RootTable, keys: Vec<FormattedKey>,
                     table: ContainerData, lead: String) {
         let added = self.insert_exec_container(root, keys, |this, seg, keys| {
             let key_text = Parser::last_key_text(&keys);
