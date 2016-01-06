@@ -68,8 +68,12 @@ mod decoder;
 #[allow(missing_docs)]
 pub mod document {
     pub use doc::{RootTable, ValueMarkup};
-    pub use doc::cursor::{StringNode, ValueRef, TableRef};
-    pub use doc::cursor::{ValueRefMut, TableRefMut, KeyMarkup};
+    // pub use doc::cursor::{StringNode, RootTableValues, ValueRef, TableValueRef};
+    pub use doc::cursor::{StringNode, ValueRef, TableRef, TableMarkup};
+    pub use doc::cursor::{ValueRefMut, KeyMarkup, InlineTable, TableKeyMarkup};
+    pub use doc::cursor::{ImplicitTableRef, ExplicitTableRef, ChildrenValues};
+    pub use doc::cursor::{SyntacticTableValues, LogicalTableValues};
+    // pub use doc::cursor::{TableNode, InlineTableNode, RootTableNodes};
 }
 
 /// Representation of a TOML value.
