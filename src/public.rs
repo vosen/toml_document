@@ -1,17 +1,13 @@
-use std::cell::{RefCell, Ref, RefMut};
+use std::cell::{RefCell, Ref};
 use std::collections::HashMap;
-use std::convert::From;
-use std::ops::Deref;
-use std::str::Chars;
-use std::iter::Peekable;
 use std::rc::Rc;
 use std::slice;
 
 use super::{check_ws, eat_before_newline, eat_newline};
 use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
 
-use super::{StringData, TableData, Container, IndirectChild, FormattedValue};
-use super::{Value, ValueNode, ValueMarkup, FormattedKey, RootTable, ValuesMap};
+use super::{TableData, Container, IndirectChild};
+use super::{Value, ValueNode, ValueMarkup, FormattedKey, Document, ValuesMap};
 use super::{ContainerKind};
 
 macro_rules! define_view {
@@ -19,18 +15,22 @@ macro_rules! define_view {
         pub struct $name($inner);
 
         impl $name {
+            #[allow(dead_code)]
             fn new<'a>(src: &'a $inner) -> &'a $name {
                 unsafe { ::std::mem::transmute(src) }
             }
 
+            #[allow(dead_code)]
             fn new_mut<'a>(src: &'a mut $inner) -> &'a mut $name {
                 unsafe { ::std::mem::transmute(src) }
             }
 
+            #[allow(dead_code)]
             fn new_slice<'a>(src: &'a [$inner]) -> &'a [$name] {
                 unsafe { ::std::mem::transmute(src) }
             }
 
+            #[allow(dead_code)]
             fn new_slice_mut<'a>(src: &'a mut [$inner]) -> &'a mut [$name] {
                 unsafe { ::std::mem::transmute(src) }
             }
@@ -46,7 +46,35 @@ unsafe fn transmute_lifetime_mut<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
     ::std::mem::transmute(x)
 }
 
-impl RootTable {
+fn direct_cursor<'a>((k, v): (&'a String, &'a Rc<RefCell<ValueNode>>)) -> (&'a str, ValueRef<'a>) {
+    (k, ValueNode::as_cursor(v))
+}
+
+fn indirect_cursor<'a>((k, v): (&'a String, &'a IndirectChild)) -> (&'a str, ValueRef<'a>) {
+    (k, v.as_cursor())
+}
+
+fn iter_logical<'a>(direct: &'a ValuesMap,
+                    indirect: &'a HashMap<String, IndirectChild>)
+                    -> Box<Iterator<Item = (&'a str, ValueRef<'a>)> + 'a> {
+    let val_iter = direct.kvp_index
+                         .iter()
+                         .map(direct_cursor);
+    let cont_iter = indirect.iter()
+                            .map(indirect_cursor);
+    Box::new(val_iter.chain(cont_iter))
+}
+
+impl Document {
+    pub fn new() -> Document {
+        Document {
+            values: ValuesMap::new(),
+            container_list: Vec::new(),
+            container_index: HashMap::new(),
+            trail: String::new(),
+        }
+    }
+
     pub fn get(&self, key: &str) -> Option<ValueRef> {
         self.values
             .get(key)
@@ -71,17 +99,16 @@ impl RootTable {
     }
 
     pub fn iter_children(&self) -> ChildrenValues {
-        ChildrenValues {
-            iter: self.values.kvp_list.iter()
-        }
+        self.values.iter_children()
     }
 
     pub fn len_logical(&self) -> usize {
         self.values.len() + self.container_index.len()
     }
 
-    pub fn iter_logical(&self) -> LogicalTableValues {
-        LogicalTableValues::new(&self.values, &self.container_index)
+    pub fn iter_logical<'a>(&'a self)
+                            -> Box<Iterator<Item=(&'a str, ValueRef<'a>)>+'a> {
+        iter_logical(&self.values, &self.container_index)
     }
 
     pub fn get_at(&self, idx: usize) -> ValueRef {
@@ -117,47 +144,24 @@ impl RootTable {
 }
 
 pub struct ChildrenValues<'a> {
-    iter: slice::Iter<'a, Rc<RefCell<ValueNode>>>
+    iter: Option<slice::Iter<'a, Rc<RefCell<ValueNode>>>>
 }
 
 impl<'a> Iterator for ChildrenValues<'a> {
     type Item = ValueRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|v| ValueNode::as_cursor(v))
-    }
-}
-
-pub struct LogicalTableValues<'a> {
-    inner_iter: Box<Iterator<Item = ValueRef<'a>> + 'a>
-}
-
-impl<'a> LogicalTableValues<'a> {
-    fn new(direct: &'a ValuesMap, indirect: &'a HashMap<String, IndirectChild>)
-           -> LogicalTableValues<'a> {
-        let val_iter = direct
-            .kvp_list
-            .iter()
-            .map(|val| { ValueNode::as_cursor(val) });
-        let cont_iter = indirect
-            .iter()
-            .map(|(_, ref container)| container.as_cursor());
-        LogicalTableValues {
-            inner_iter: Box::new(val_iter.chain(cont_iter))
+        match self.iter {
+            Some(ref mut iter) => {
+                iter.next().map(|v| ValueNode::as_cursor(v))
+            }
+            None => None
         }
     }
 }
 
-impl<'a> Iterator for LogicalTableValues<'a> {
-    type Item = ValueRef<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner_iter.next()
-    }
-}
-
 pub struct SyntacticTableValues<'a> {
-    table: &'a RootTable,
+    table: &'a Document,
     idx: usize,
 }
 
@@ -174,7 +178,7 @@ impl<'a> Iterator for SyntacticTableValues<'a> {
     }
 }
 
-impl super::ValuesMap {
+impl ValuesMap {
     fn get(&self, key: &str) -> Option<ValueRef> {
         self.kvp_index
             .get(key)
@@ -199,36 +203,46 @@ impl super::ValuesMap {
         self.kvp_list.len()
     }
 
-    fn iter_val<'a>(&'a self) -> Box<Iterator<Item = ValueRef> + 'a> {
-        let iter = self.kvp_list
-            .iter()
-            .map(|val| { ValueNode::as_cursor(val) });
+    fn iter<'a>(&'a self) -> Box<Iterator<Item=(&'a str, ValueRef<'a>)>+'a> {
+        let iter = self.kvp_index
+                       .iter()
+                       .map(direct_cursor);
         Box::new(iter)
     }
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item = ValueRef> + 'a> {
-        let iter = self.kvp_list
-            .iter()
-            .map(|val| { ValueNode::as_cursor(val) });
-        Box::new(iter)
+    fn iter_children(&self) -> ChildrenValues {
+        ChildrenValues {
+            iter: Some(self.kvp_list.iter())
+        }
     }
 }
 
 impl ValueNode {
     fn as_cursor<'a>(r: &'a RefCell<Self>) -> ValueRef<'a> {
-        ValueRef::String(
-            StringNode::new(
-                unsafe { transmute_lifetime(&*r.borrow()) }
-            )
-        )
+        match r.borrow().value.value  {
+            Value::String(..) => {
+                ValueRef::String(
+                    StringNode::new(
+                        unsafe { transmute_lifetime(&*r.borrow()) }
+                    )
+                )
+            }
+            _ => unimplemented!()
+        }
     }
 
     fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> ValueRefMut<'a> {
-        ValueRefMut::String(
-            StringNode::new_mut(
-                unsafe { transmute_lifetime_mut(&mut*r.borrow_mut()) }
-            )
-        )
+        let value = { &r.borrow().value.value };
+        match *value {
+            Value::String(..) => {
+                ValueRefMut::String(
+                    StringNode::new_mut(
+                        unsafe { transmute_lifetime_mut(&mut*r.borrow_mut()) }
+                    )
+                )
+            }
+            _ => unimplemented!()
+        }
     }
 }
 
@@ -271,7 +285,12 @@ impl Container {
         self.data.direct.len()
     }
 
-    fn iter_logical(&self) -> LogicalTableValues {
+    fn iter_children(&self) -> ChildrenValues {
+        self.data.direct.iter_children()
+    }
+
+    fn iter_logical<'a>(&'a self)
+                        -> Box<Iterator<Item=(&'a str, ValueRef<'a>)>+'a> {
         self.data.iter_logical()
     }
 
@@ -304,8 +323,9 @@ impl super::ContainerData {
             .map_or(None, |child| child.get_mut(key))
     }
 
-    fn iter_logical(&self) -> LogicalTableValues {
-        LogicalTableValues::new(&self.direct, &self.indirect)
+    fn iter_logical<'a>(&'a self)
+                        -> Box<Iterator<Item=(&'a str, ValueRef<'a>)>+'a> {
+        iter_logical(&self.direct, &self.indirect)
     }
 }
 
@@ -326,7 +346,7 @@ impl IndirectChild {
                     }
                 )
             }
-            &IndirectChild::Array(ref data) => unimplemented!()
+            &IndirectChild::Array(..) => unimplemented!()
         }
     }
 
@@ -342,7 +362,7 @@ impl IndirectChild {
                     ExplicitTableRef::new(container)
                 )
             }
-            &mut IndirectChild::Array(ref data) => unimplemented!()
+            &mut IndirectChild::Array(..) => unimplemented!()
         }
     }
 
@@ -354,7 +374,7 @@ impl IndirectChild {
             &IndirectChild::ExplicitTable(ref container) => {
                 unsafe { transmute_lifetime(&container.borrow().data) }.get(key)
             }
-            &IndirectChild::Array(ref data) => unimplemented!()
+            &IndirectChild::Array(..) => unimplemented!()
         }
     }
 
@@ -367,7 +387,7 @@ impl IndirectChild {
                 let container_data = &mut container.borrow_mut().data;
                 unsafe { transmute_lifetime_mut(container_data) }.get_mut(key)
             }
-            IndirectChild::Array(ref data) => unimplemented!()
+            IndirectChild::Array(..) => unimplemented!()
         }
     }
 }
@@ -375,6 +395,21 @@ impl IndirectChild {
 pub enum ValueRef<'a> {
     String(&'a StringNode),
     Table(TableRef<'a>),
+}
+
+impl<'a> ValueRef<'a> {
+    pub fn is_child(&self) -> bool {
+        match *self {
+            ValueRef::String(..) => true,
+            ValueRef::Table(ref table) => {
+                match table.markup() {
+                    TableMarkup::Inline{ .. } =>true,
+                    TableMarkup::Implicit
+                    | TableMarkup::Explicit{ .. } => false,
+                }
+            }
+        }
+    }
 }
 
 define_view!(StringNode, ValueNode);
@@ -408,7 +443,7 @@ impl StringNode {
         KeyMarkup::new_mut(&mut self.0.key)
     }
 
-    pub fn get_raw(&self) -> &str {
+    pub fn raw(&self) -> &str {
         match self.0.value.value {
             Value::String(ref data) => &data.raw,
             _ => unreachable!()
@@ -420,7 +455,7 @@ pub struct TableRef<'a> {
     data: Table<'a>
 }
 
-pub enum Table<'a> {
+enum Table<'a> {
     Inline(&'a InlineTable),
     Implicit(&'a HashMap<String, IndirectChild>),
     Explicit(Ref<'a, Container>)
@@ -438,12 +473,20 @@ impl<'a> TableRef<'a> {
     pub fn len_children(&self) -> usize {
         match self.data {
             Table::Inline(ref data) => data.len(),
-            Table::Implicit(ref map) => 0,
+            Table::Implicit(..) => 0,
             Table::Explicit(ref data) => data.len_children(),
         }
     }
 
-    pub fn len_logical(&self) -> usize {
+    pub fn iter_children(&self) -> ChildrenValues {
+        match self.data {
+            Table::Inline(ref tbl) => tbl.data().values.direct.iter_children(),
+            Table::Implicit(..) => ChildrenValues { iter: None },
+            Table::Explicit(ref data) => data.iter_children(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
         match self.data {
             Table::Inline(ref data) => data.len(),
             Table::Implicit(ref map) => implicit_table_len_logical(map),
@@ -451,7 +494,8 @@ impl<'a> TableRef<'a> {
         }
     }
 
-    pub fn iter_logical(&self) -> LogicalTableValues {
+    pub fn iter<'b>(&'b self) 
+                    -> Box<Iterator<Item=(&'b str, ValueRef<'b>)>+'b> {
         match self.data {
             Table::Inline(ref data) => data.iter(),
             Table::Implicit(ref map) => implicit_table_iter_logical(map),
@@ -462,10 +506,11 @@ impl<'a> TableRef<'a> {
     pub fn markup(&self) -> TableMarkup {
         match self.data {
             Table::Inline(ref data) => TableMarkup::Inline {
-                markup: data.markup(),
+                key: data.key(),
+                value: data.markup(),
                 comma_trivia: data.get_comma_trivia()
             },
-            Table::Implicit(ref map) => TableMarkup::Implicit,
+            Table::Implicit(..) => TableMarkup::Implicit,
             Table::Explicit(ref data) => TableMarkup::Explicit {
                 leading_trivia: data.get_leading_trivia(),
                 keys: data.keys()
@@ -475,7 +520,7 @@ impl<'a> TableRef<'a> {
 }
 
 pub enum TableMarkup<'a> {
-    Inline{ markup: &'a ValueMarkup, comma_trivia: &'a str },
+    Inline{ key: &'a KeyMarkup, value: &'a ValueMarkup, comma_trivia: &'a str },
     Implicit,
     Explicit{ leading_trivia: &'a str, keys: &'a [TableKeyMarkup] },
 }
@@ -485,6 +530,17 @@ pub enum ValueRefMut<'a> {
     InlineTable(&'a mut InlineTable),
     ImplicitTable(ImplicitTableRef<'a>),
     ExplicitTable(ExplicitTableRef<'a>),
+}
+
+impl<'a> ValueRefMut<'a> {
+    pub fn is_child(&self) -> bool {
+        match *self {
+            ValueRefMut::String(..)
+            | ValueRefMut::InlineTable(..) => true,
+            ValueRefMut::ImplicitTable(..)
+            | ValueRefMut::ExplicitTable(.. ) => false
+        }
+    }
 }
 
 define_view!(InlineTable, ValueNode);
@@ -524,10 +580,9 @@ impl InlineTable {
         self.data().values.direct.len()
     }
 
-    pub fn iter(&self) -> LogicalTableValues {
-        LogicalTableValues {
-            inner_iter: self.data().values.direct.iter()
-        }
+    pub fn iter<'a>(&'a self)
+                    -> Box<Iterator<Item=(&'a str, ValueRef<'a>)>+'a> {
+        self.data().values.direct.iter()
     }
 
     pub fn markup(&self) -> &ValueMarkup {
@@ -569,11 +624,9 @@ fn implicit_table_len_logical<'a>(t: &'a HashMap<String, IndirectChild>)
 }
 
 fn implicit_table_iter_logical<'a>(t: &'a HashMap<String, IndirectChild>)
-                                   -> LogicalTableValues {
-    let i = t.iter().map(|(_, val)| { IndirectChild::as_cursor(val) });
-    LogicalTableValues {
-        inner_iter: Box::new(i)
-    }
+                                   -> Box<Iterator<Item=(&'a str, ValueRef<'a>)> + 'a> {
+    let iter = t.iter().map(indirect_cursor);
+    Box::new(iter)
 }
 
 impl<'a> ImplicitTableRef<'a> {
@@ -593,7 +646,8 @@ impl<'a> ImplicitTableRef<'a> {
         implicit_table_len_logical(self.0)
     }
 
-    pub fn iter(&self) -> LogicalTableValues {
+    pub fn iter<'b>(&'b self)
+                    -> Box<Iterator<Item=(&'b str, ValueRef<'b>)>+'b> {
         implicit_table_iter_logical(self.0)
     }
 
@@ -632,16 +686,15 @@ impl<'a> ExplicitTableRef<'a> {
     }
 
     pub fn iter_children(&self) -> ChildrenValues {
-        ChildrenValues {
-            iter: self.borrow().data.direct.kvp_list.iter()
-        }
+        self.borrow().data.direct.iter_children()
     }
 
     pub fn len(&self) -> usize {
         self.borrow().len_logical()
     }
 
-    pub fn iter(&self) -> LogicalTableValues {
+    pub fn iter<'b>(&'b self)
+                    -> Box<Iterator<Item=(&'b str, ValueRef<'b>)>+'b> {
         self.borrow().iter_logical()
     }
 
@@ -672,6 +725,10 @@ impl<'a> ExplicitTableRef<'a> {
 define_view!(TableKeyMarkup, FormattedKey);
 
 impl TableKeyMarkup {
+    pub fn get(&self) -> &str {
+        &self.0.escaped
+    }
+
     pub fn get_leading_trivia(&self) -> &str {
         &self.0.markup.lead
     }
@@ -690,7 +747,7 @@ impl TableKeyMarkup {
         self.0.markup.trail = s;
     }
 
-    pub fn get_raw(&self) -> &str {
+    pub fn raw(&self) -> &str {
         match self.0.raw {
             Some(ref raw) => &*raw,
             None => &*self.0.escaped
@@ -701,6 +758,10 @@ impl TableKeyMarkup {
 define_view!(KeyMarkup, FormattedKey);
 
 impl KeyMarkup {
+    pub fn get(&self) -> &str {
+        &self.0.escaped
+    }
+
     pub fn get_leading_trivia(&self) -> &str {
         &self.0.markup.lead
     }
@@ -737,7 +798,7 @@ impl KeyMarkup {
         self.0.markup.trail = s;
     }
 
-    pub fn get_raw(&self) -> &str {
+    pub fn raw(&self) -> &str {
         match self.0.raw {
             Some(ref raw) => &*raw,
             None => &*self.0.escaped

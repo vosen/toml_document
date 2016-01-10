@@ -1,65 +1,56 @@
 extern crate rustc_serialize;
-extern crate toml;
+extern crate toml_document;
 
 use std::collections::BTreeMap;
+
 use rustc_serialize::json::Json;
 
-use toml::{Parser, Value};
-use toml::Value::{Table, Integer, Float, Boolean, Datetime, Array};
+use toml_document::{Parser, ValueRef};
 
-fn to_json(toml: Value) -> Json {
-    fn doit(s: &str, json: Json) -> Json {
-        let mut map = BTreeMap::new();
-        map.insert(format!("{}", "type"), Json::String(format!("{}", s)));
-        map.insert(format!("{}", "value"), json);
-        Json::Object(map)
+type LogicalValues<'a> = Box<Iterator<Item = (&'a str, ValueRef<'a>)> + 'a>;
+
+fn val_to_json((key, value): (&str, ValueRef)) -> (String, Json) {
+  fn typed_json(s: &str, json: Json) -> Json {
+    let mut map = BTreeMap::new();
+      map.insert(format!("{}", "type"), Json::String(format!("{}", s)));
+      map.insert(format!("{}", "value"), json);
+      Json::Object(map)
+  }
+  match &value {
+    &ValueRef::String(ref s) => {
+      let json_string = Json::String(s.get().to_string());
+      (key.to_string(), typed_json("string", json_string))
     }
-    match toml {
-        Value::String(s) => doit("string", Json::String(s)),
-        Integer(i) => doit("integer", Json::String(format!("{}", i))),
-        Float(f) => doit("float", Json::String({
-            let s = format!("{:.15}", f);
-            let s = format!("{}", s.trim_right_matches('0'));
-            if s.ends_with(".") {format!("{}0", s)} else {s}
-        })),
-        Boolean(b) => doit("bool", Json::String(format!("{}", b))),
-        Datetime(s) => doit("datetime", Json::String(s)),
-        Array(arr) => {
-            let is_table = match arr.first() {
-                Some(&Table(..)) => true,
-                _ => false,
-            };
-            let json = Json::Array(arr.into_iter().map(to_json).collect());
-            if is_table {json} else {doit("array", json)}
-        }
-        Table(table) => Json::Object(table.into_iter().map(|(k, v)| {
-            (k, to_json(v))
-        }).collect()),
-    }
+    &ValueRef::Table(ref table) => {
+      (key.to_string(), to_json(table.iter()))
+    },
+  }
+}
+
+fn to_json(iter: LogicalValues) -> Json {
+    Json::Object(iter.map(val_to_json).collect())
 }
 
 fn run(toml: &str, json: &str) {
     let mut p = Parser::new(toml);
-    let table = p.parse();
+    let doc = p.parse();
     assert!(p.errors.len() == 0, "had_errors: {:?}",
             p.errors.iter().map(|e| {
                 (e.desc.clone(), &toml[e.lo - 5..e.hi + 5])
             }).collect::<Vec<(String, &str)>>());
-    assert!(table.is_some());
-    let toml = Table(table.unwrap());
-    let toml_string = format!("{}", toml);
+    assert!(doc.is_some());
+    let doc = doc.unwrap();
 
+    // compare logical structure with jsons
     let json = Json::from_str(json).unwrap();
-    let toml_json = to_json(toml.clone());
+    let toml_json = to_json(doc.iter_logical());
     assert!(json == toml_json,
             "expected\n{}\ngot\n{}\n",
             json.pretty(),
             toml_json.pretty());
 
-    let table2 = Parser::new(&toml_string).parse().unwrap();
-    // floats are a little lossy
-    if table2.values().any(|v| v.as_float().is_some()) { return }
-    assert_eq!(toml, Table(table2));
+    // check round-trip equality
+    assert_eq!(&doc.to_string(), toml);
 }
 
 macro_rules! test( ($name:ident, $toml:expr, $json:expr) => (

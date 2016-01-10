@@ -1,280 +1,491 @@
-//! A TOML-parsing library
-//!
-//! This library is an implementation in Rust of a parser for TOML configuration
-//! files [1]. It is focused around high quality errors including specific spans
-//! and detailed error messages when things go wrong.
-//!
-//! This implementation currently passes the language agnostic [test suite][2].
-//!
-//! # Example
-//!
-//! ```
-//! let toml = r#"
-//!     [test]
-//!     foo = "bar"
-//! "#;
-//!
-//! let value = toml::Parser::new(toml).parse().unwrap();
-//! println!("{:?}", value);
-//! ```
-//!
-//! # Conversions
-//!
-//! This library also supports using the standard `Encodable` and `Decodable`
-//! traits with TOML values. This library provides the following conversion
-//! capabilities:
-//!
-//! * `String` => `toml::Value` - via `Parser`
-//! * `toml::Value` => `String` - via `Display`
-//! * `toml::Value` => rust object - via `Decoder`
-//! * rust object => `toml::Value` - via `Encoder`
-//!
-//! Convenience functions for performing multiple conversions at a time are also
-//! provided.
-//!
-//! [1]: https://github.com/mojombo/toml
-//! [2]: https://github.com/BurntSushi/toml-test
+// #![doc(html_root_url = "")]
+// #![deny(missing_docs)]
+// #![cfg_attr(test, deny(warnings))]
 
-#![doc(html_root_url = "http://alexcrichton.com/toml-rs")]
-#![deny(missing_docs)]
-#![cfg_attr(test, deny(warnings))]
+#![deny(unused_variables)]
+// #![deny(dead_code)]
+#![deny(unused_imports)]
 
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_imports)]
+use std::cell::{RefCell};
+use std::collections::HashMap;
+use std::collections::hash_map::{Entry};
+use std::rc::Rc;
+use std::fmt::Write;
+use std::str::Chars;
+use std::iter::{Peekable};
 
-#[cfg(feature = "rustc-serialize")] extern crate rustc_serialize;
-
-
-use std::collections::BTreeMap;
-use std::str::FromStr;
-use std::string;
-
-pub use self::doc::parser::{Parser, ParserError};
-
-#[cfg(any(feature = "rustc-serialize", feature = "serde"))]
-pub use self::encoder::{Encoder, Error, encode, encode_str};
-#[cfg(any(feature = "rustc-serialize", feature = "serde"))]
-pub use self::decoder::{Decoder, DecodeError, DecodeErrorKind, decode, decode_str};
-
-#[allow(missing_docs)]
-mod doc;
+mod parser;
+mod public;
 mod display;
-#[cfg(any(feature = "rustc-serialize", feature = "serde"))]
-mod encoder;
-#[cfg(any(feature = "rustc-serialize", feature = "serde"))]
-mod decoder;
 
-#[allow(missing_docs)]
-pub mod document {
-    pub use doc::{RootTable, ValueMarkup};
-    // pub use doc::cursor::{StringNode, RootTableValues, ValueRef, TableValueRef};
-    pub use doc::cursor::{StringNode, ValueRef, TableRef, TableMarkup};
-    pub use doc::cursor::{ValueRefMut, KeyMarkup, InlineTable, TableKeyMarkup};
-    pub use doc::cursor::{ImplicitTableRef, ExplicitTableRef, ChildrenValues};
-    pub use doc::cursor::{SyntacticTableValues, LogicalTableValues};
-    // pub use doc::cursor::{TableNode, InlineTableNode, RootTableNodes};
+pub use self::parser::{Parser, ParserError};
+pub use public::*;
+pub use display::*;
+
+static MALFORMED_LEAD_MSG: &'static str = "Malformed leading trivia";
+static MALFORMED_TRAIL_MSG: &'static str = "Malformed trailing trivia";
+
+fn check_ws(s: &str, error: &'static str) {
+    for c in s.chars() {
+        match c {
+            ' ' | '\t' => { },
+            _ => panic!(error)
+        }
+    }
 }
 
-/// Representation of a TOML value.
-#[derive(PartialEq, Clone, Debug)]
-#[allow(missing_docs)]
-pub enum Value {
-    String(String),
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
-    Datetime(String),
-    Array(Array),
-    Table(Table),
+fn eat_before_newline(mut chars: Peekable<Chars>) -> Peekable<Chars> {
+    while chars.peek().is_some() {
+        match *chars.peek().unwrap() {
+            '\n' => break,
+            '\r' => {
+                let before_cr = chars.clone();
+                chars.next();
+                if chars.peek() == Some(&'\n') {
+                    return before_cr;
+                } else {
+                    continue;
+                }
+            },
+            _ => { }
+        }
+        chars.next();
+    }
+    chars
 }
 
-/// Type representing a TOML array, payload of the Value::Array variant
-pub type Array = Vec<Value>;
+fn eat_newline<'a>(mut chars: Peekable<Chars<'a>>,
+               error: &'static str) -> Peekable<Chars<'a>> {
+    match chars.next().unwrap_or_else(|| panic!(error)) {
+        '\n' => { },
+        '\r' => assert!(chars.next() == Some('\n'), error),
+        _ => panic!(error)
+    }
+    chars
+}
 
-/// Type representing a TOML table, payload of the Value::Table variant
-pub type Table = BTreeMap<string::String, Value>;
+fn eat_eof(mut chars: Peekable<Chars>, error: &'static str) {
+    assert!(chars.next() == None, error);
+}
 
-impl Value {
-    /// Tests whether this and another value have the same type.
-    pub fn same_type(&self, other: &Value) -> bool {
-        match (self, other) {
-            (&Value::String(..), &Value::String(..)) |
-            (&Value::Integer(..), &Value::Integer(..)) |
-            (&Value::Float(..), &Value::Float(..)) |
-            (&Value::Boolean(..), &Value::Boolean(..)) |
-            (&Value::Datetime(..), &Value::Datetime(..)) |
-            (&Value::Array(..), &Value::Array(..)) |
-            (&Value::Table(..), &Value::Table(..)) => true,
+struct TraversalPosition<'a> {
+    direct: Option<&'a mut ValuesMap>,
+    indirect: &'a mut HashMap<String, IndirectChild>
+}
 
-            _ => false,
+impl<'a> TraversalPosition<'a> {
+    fn from_indirect(map: &mut HashMap<String, IndirectChild>)
+                     -> TraversalPosition {
+        TraversalPosition {
+            direct: None,
+            indirect: map 
+        }
+    }
+}
+
+// Main table representing the whole document.
+// This structure preserves TOML document and its markup.
+// Internally, a document is split in the following way:
+//         +
+//         |- values
+//  a="b"  +
+//         +
+//  [foo]  |
+//  x="y"  |- container_list
+//  [bar]  |
+//  c="d"  +
+//         +
+//         |- trail
+//         +
+pub struct Document {
+    values: ValuesMap,
+    // List of containers: tables and arrays that are present in the document.
+    // Stored in the order they appear in the document.
+    container_list: Vec<Rc<RefCell<Container>>>,
+    // Index for quick traversal.
+    container_index: HashMap<String, IndirectChild>,
+    trail: String
+}
+
+impl Document {
+    fn traverse(&mut self) -> TraversalPosition {
+        TraversalPosition {
+            direct: Some(&mut self.values),
+            indirect: &mut self.container_index
+        }
+    }
+}
+
+// Order-preserving map of values that are directly contained in
+// a root table, table or an array.
+// A map is represented in the following way:
+//         +
+//         |- kvp_list[0]
+//  a="b"  +
+//         +
+//         |- kvp_list[1]
+//  x="y"  +
+//         +
+//         |- trail
+//         +
+struct ValuesMap {
+    // key-value pairs stored in the order they appear in a document
+    kvp_list: Vec<Rc<RefCell<ValueNode>>>,
+    // Index for quick traversal.
+    kvp_index: HashMap<String, Rc<RefCell<ValueNode>>>,
+    trail: String
+}
+
+impl ValuesMap {
+    fn new() -> ValuesMap {
+        ValuesMap {
+            kvp_list: Vec::new(),
+            kvp_index: HashMap::new(),
+            trail: String::new()
         }
     }
 
-    /// Returns a human-readable representation of the type of this value.
-    pub fn type_str(&self) -> &'static str {
-        match *self {
-            Value::String(..) => "string",
-            Value::Integer(..) => "integer",
-            Value::Float(..) => "float",
-            Value::Boolean(..) => "boolean",
-            Value::Datetime(..) => "datetime",
-            Value::Array(..) => "array",
-            Value::Table(..) => "table",
-        }
-    }
-
-    /// Extracts the string of this value if it is a string.
-    pub fn as_str<'a>(&'a self) -> Option<&'a str> {
-        match *self { Value::String(ref s) => Some(&**s), _ => None }
-    }
-
-    /// Extracts the integer value if it is an integer.
-    pub fn as_integer(&self) -> Option<i64> {
-        match *self { Value::Integer(i) => Some(i), _ => None }
-    }
-
-    /// Extracts the float value if it is a float.
-    pub fn as_float(&self) -> Option<f64> {
-        match *self { Value::Float(f) => Some(f), _ => None }
-    }
-
-    /// Extracts the boolean value if it is a boolean.
-    pub fn as_bool(&self) -> Option<bool> {
-        match *self { Value::Boolean(b) => Some(b), _ => None }
-    }
-
-    /// Extracts the datetime value if it is a datetime.
-    ///
-    /// Note that a parsed TOML value will only contain ISO 8601 dates. An
-    /// example date is:
-    ///
-    /// ```notrust
-    /// 1979-05-27T07:32:00Z
-    /// ```
-    pub fn as_datetime<'a>(&'a self) -> Option<&'a str> {
-        match *self { Value::Datetime(ref s) => Some(&**s), _ => None }
-    }
-
-    /// Extracts the array value if it is an array.
-    pub fn as_slice<'a>(&'a self) -> Option<&'a [Value]> {
-        match *self { Value::Array(ref s) => Some(&**s), _ => None }
-    }
-
-    /// Extracts the table value if it is a table.
-    pub fn as_table<'a>(&'a self) -> Option<&'a Table> {
-        match *self { Value::Table(ref s) => Some(s), _ => None }
-    }
-
-    /// Lookups for value at specified path.
-    ///
-    /// Uses '.' as a path separator.
-    ///
-    /// Note: arrays have zero-based indexes.
-    ///
-    /// ```
-    /// # #![allow(unstable)]
-    /// let toml = r#"
-    ///      [test]
-    ///      foo = "bar"
-    ///
-    ///      [[values]]
-    ///      foo = "baz"
-    ///
-    ///      [[values]]
-    ///      foo = "qux"
-    /// "#;
-    /// let value: toml::Value = toml.parse().unwrap();
-    ///
-    /// let foo = value.lookup("test.foo").unwrap();
-    /// assert_eq!(foo.as_str().unwrap(), "bar");
-    ///
-    /// let foo = value.lookup("values.1.foo").unwrap();
-    /// assert_eq!(foo.as_str().unwrap(), "qux");
-    ///
-    /// let no_bar = value.lookup("test.bar");
-    /// assert_eq!(no_bar.is_none(), true);
-    /// ```
-    pub fn lookup<'a>(&'a self, path: &'a str) -> Option<&'a Value> {
-        let mut cur_value = self;
-        for key in path.split('.') {
-            match cur_value {
-                &Value::Table(ref hm) => {
-                    match hm.get(key) {
-                        Some(v) => cur_value = v,
-                        None => return None
-                    }
-                },
-                &Value::Array(ref v) => {
-                    match key.parse::<usize>().ok() {
-                        Some(idx) if idx < v.len() => cur_value = &v[idx],
-                        _ => return None
-                    }
-                },
-                _ => return None
+    fn insert(&mut self, key: FormattedKey, value: FormattedValue) -> bool {
+        let key_text = key.escaped.clone();
+        let node = Rc::new(RefCell::new(ValueNode{
+            key: key,
+            value: value
+        }));
+        match self.kvp_index.entry(key_text) {
+            Entry::Occupied(_) => return false,
+            Entry::Vacant(entry) => {
+                entry.insert(node.clone())
             }
         };
+        self.kvp_list.push(node);
+        true
+    }
 
-        Some(cur_value)
+    fn set_last_value_trail(&mut self, s: String) {
+        self.kvp_list
+            .last()
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .value
+            .markup
+            .trail = s;
     }
 }
 
-impl FromStr for Value {
-    type Err = Vec<ParserError>;
-    fn from_str(s: &str) -> Result<Value, Vec<ParserError>> {
-        let mut p = Parser::new(s);
-        match p.parse().map(Value::Table) {
-            Some(n) => Ok(n),
-            None => Err(p.errors),
+// Value plus leading and trailing auxiliary text.
+//   a  =  "qwertyu" \n
+// +---+ +------------+
+//   |         |
+//  key      value
+struct ValueNode {
+    key: FormattedKey,
+    value: FormattedValue
+}
+
+// Value plus leading and trailing auxiliary text.
+// a =            "qwertyu"          \n
+//    +----------++-------++----------+
+//         |          |          |
+//    markup.lead   value  markup.trail
+struct FormattedValue {
+    value: Value,
+    markup: ValueMarkup
+}
+
+impl FormattedValue {
+    fn new(lead: String, v: Value) -> FormattedValue {
+        FormattedValue {
+            value: v,
+            markup: ValueMarkup {
+                lead: lead,
+                trail: String::new()
+            }
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::Value;
+pub struct ValueMarkup {
+    // auxiliary text between the equality sign and the value
+    lead: String,
+    // auxiliary text after the value, up to and including the first newline
+    trail: String
+}
 
-    #[test]
-    fn lookup_valid() {
-        let toml = r#"
-              [test]
-              foo = "bar"
-
-              [[values]]
-              foo = "baz"
-
-              [[values]]
-              foo = "qux"
-        "#;
-
-        let value: Value = toml.parse().unwrap();
-
-        let test_foo = value.lookup("test.foo").unwrap();
-        assert_eq!(test_foo.as_str().unwrap(), "bar");
-
-        let foo1 = value.lookup("values.1.foo").unwrap();
-        assert_eq!(foo1.as_str().unwrap(), "qux");
-
-        assert!(value.lookup("test.bar").is_none());
-        assert!(value.lookup("test.foo.bar").is_none());
+impl ValueMarkup {
+    pub fn new(lead: String, trail: String) -> ValueMarkup {
+        let mut value = ValueMarkup {
+            lead: String::new(),
+            trail: String::new(),
+        };
+        value.set_leading_trivia(lead);
+        value.set_trailing_trivia(trail);
+        value
     }
 
-    #[test]
-    fn lookup_invalid_index() {
-        let toml = r#"
-            [[values]]
-            foo = "baz"
-        "#;
+    pub fn get_leading_trivia(&self) -> &str {
+        &self.lead
+    }
 
-        let value: Value = toml.parse().unwrap();
+    pub fn set_leading_trivia(&mut self, s: String) {
+        check_ws(&*s, MALFORMED_LEAD_MSG);
+        self.lead = s;
+    }
 
-        let foo = value.lookup("test.foo");
-        assert!(foo.is_none());
+    pub fn get_trailing_trivia(&self) -> &str {
+        &self.trail
+    }
 
-        let foo = value.lookup("values.100.foo");
-        assert!(foo.is_none());
+    pub fn set_trailing_trivia(&mut self, s: String) {
+        ValueMarkup::check_trailing_trivia(&*s);
+        self.trail = s;
+    }
 
-        let foo = value.lookup("values.str.foo");
-        assert!(foo.is_none());
+    fn check_trailing_trivia(s: &str) {
+        let chars = s.chars().peekable();
+        let chars = ValueMarkup::eat_ws(chars);
+        ValueMarkup::check_comment_or_newline(chars);
+    }
+
+    fn eat_ws(mut chars: Peekable<Chars>) -> Peekable<Chars> {
+        while chars.peek().is_some() {
+            match *chars.peek().unwrap() {
+                ' ' | '\t' => { },
+                _ => break
+            }
+            chars.next();
+        }
+        chars
+    }
+
+    fn check_comment_or_newline(mut chars: Peekable<Chars>) {
+        if chars.peek() == Some(&'#') {
+            chars = eat_before_newline(chars);
+        }
+        chars = eat_newline(chars, MALFORMED_TRAIL_MSG);
+        eat_eof(chars, MALFORMED_TRAIL_MSG);
+    }
+}
+
+struct StringData {
+    escaped: String,
+    raw: String
+}
+
+impl StringData {
+    fn get(&self) -> &str {
+        &*self.escaped
+    }
+
+    fn set_checked(&mut self, s: String) {
+        self.raw = StringData::unescape(&*s);
+        self.escaped = s;
+    }
+
+    fn unescape(s: &str) -> String {
+        let mut buffer = String::with_capacity(s.len() + 2);
+        buffer.push('"');
+        for c in s.chars() {
+            match c as u32 {
+                0x08 => buffer.push_str(r#"\b"#),
+                0x09 => buffer.push_str(r#"\t"#),
+                0x0A => buffer.push_str(r#"\n"#),
+                0x0C => buffer.push_str(r#"\f"#),
+                0x0D => buffer.push_str(r#"\r"#),
+                0x22 => buffer.push_str(r#"\""#),
+                0x5C => buffer.push_str(r#"\\"#),
+                c if c <= 0x1F => drop(write!(buffer, r#"\u{:04X}"#, c)),
+                _ => buffer.push(c as char)
+            }
+        }
+        buffer.push('"');
+        buffer
+    }
+}
+
+struct TableData {
+    values: ContainerData,
+    comma_trail: String
+}
+
+enum Value {
+    String(StringData),
+    Integer { parsed: i64, raw: String },
+    Float { parsed: f64, raw: String },
+    Boolean(bool),
+    Datetime(String),
+    Array { values: Vec<FormattedValue>, comma_trail: String },
+    InlineTable(TableData)
+}
+
+impl Value {
+    fn new_table(map: ValuesMap, trail: String) -> Value {
+        Value::InlineTable(
+            TableData { 
+                values: ContainerData {
+                    direct: map,
+                    indirect: HashMap::new()
+                },
+                comma_trail: trail
+            }
+        )
+    }
+
+    fn type_str(&self) -> &'static str {
+        match *self {
+            Value::String(..) => "string",
+            Value::Integer {..} => "integer",
+            Value::Float {..} => "float",
+            Value::Boolean(..) => "boolean",
+            Value::Datetime(..) => "datetime",
+            Value::Array {..} => "array",
+            Value::InlineTable(..) => "table",
+        }
+    }
+
+    fn is_table(&self) -> bool {
+        match *self {
+            Value::InlineTable(..) => true,
+            _ => false
+        }
+    }
+
+    fn as_table(&mut self) -> &mut ContainerData {
+        match *self {
+            Value::InlineTable(TableData { ref mut values, .. }) => values,
+            _ => panic!()
+        }
+    }
+}
+
+// Entry in the document index. This index is used for traversal (which is
+// heavily used during parsing and adding new elements) and does not preserve
+// ordering, just the structure 
+// Some examples:
+//  [a.b]
+//  x="y"
+// Document above contains single implicit table [a], which in turn contains
+// single explicit table [a.b].
+//  [a.b]
+//  x="y"
+//  [a]
+// Document above contains single explicit table [a], which in turn contains
+// single explicit table [a.b].
+enum IndirectChild {
+    ImplicitTable(HashMap<String, IndirectChild>),
+    ExplicitTable(Rc<RefCell<Container>>),
+    Array(Vec<Rc<RefCell<Container>>>)
+}
+
+impl IndirectChild {
+    fn as_implicit(&mut self) -> &mut HashMap<String, IndirectChild> {
+        if let IndirectChild::ImplicitTable(ref mut m) = *self { m }
+        else { panic!() }
+    }
+
+    fn to_implicit(self) -> HashMap<String, IndirectChild> {
+        if let IndirectChild::ImplicitTable(m) = self { m }
+        else { panic!() }
+    }
+
+    fn is_implicit(&self) -> bool {
+        match *self {
+            IndirectChild::ImplicitTable (..) => true,
+            _ => false
+        }
+    }
+}
+
+struct Container {
+    data: ContainerData,
+    // Path to the table, eg:
+    //  [   a   .   b   ]
+    //   +-----+ +-----+
+    //      |       |
+    //   keys[0] keys[1]
+    keys: Vec<FormattedKey>,
+    kind: ContainerKind,
+    lead: String,
+}
+
+impl Container {
+    fn new_array(data: ContainerData, ks: Vec<FormattedKey>, lead: String)
+                     -> Container {
+        Container { 
+            data: data,
+            keys: ks,
+            lead: lead,
+            kind: ContainerKind::Array,
+        }
+    }
+
+    fn new_table(data: ContainerData, ks: Vec<FormattedKey>, lead: String)
+                     -> Container {
+        Container { 
+            data: data,
+            keys: ks,
+            lead: lead,
+            kind: ContainerKind::Table,
+        }
+    }
+}
+
+// Direct children are key-values that appear below container declaration,
+// indirect children are are all other containers that are logically defined
+// inside the container. For example:
+//  [a]
+//  x="y"
+// [a.b]
+// q="w"
+// In the document above, table container [a] contains single direct child
+// (x="y") and single indirect child (table container [a.b])
+struct ContainerData {
+    direct: ValuesMap,
+    indirect: HashMap<String, IndirectChild>
+}
+
+impl ContainerData {
+    fn new() -> ContainerData {
+        ContainerData {
+            direct: ValuesMap::new(),
+            indirect: HashMap::new()
+        }
+    }
+
+    fn traverse(&mut self) -> TraversalPosition {
+        TraversalPosition {
+            direct: Some(&mut self.direct),
+            indirect: &mut self.indirect
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Copy, Clone)]
+enum ContainerKind {
+    Table,
+    Array,
+}
+
+struct FormattedKey {
+    escaped: String,
+    raw: Option<String>,
+    markup: PrivKeyMarkup
+}
+
+struct PrivKeyMarkup {
+    lead: String,
+    trail: String
+}
+
+impl FormattedKey {
+    fn new(lead: String, key: (String, Option<String>), trail: String) -> FormattedKey {
+        FormattedKey {
+            escaped: key.0,
+            raw: key.1,
+            markup: PrivKeyMarkup {
+                lead: lead,
+                trail: trail,
+            }
+        }
     }
 }
