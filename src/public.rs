@@ -1,4 +1,4 @@
-use std::cell::{RefCell, Ref};
+use std::cell::{RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::slice;
@@ -253,7 +253,9 @@ impl Container {
             ContainerKind::Table => {
                 ValueRef::Table(
                     TableRef {
-                        data: Table::Explicit(r.borrow())
+                        data: Table::Explicit(
+                            unsafe { transmute_lifetime(&r.borrow()) }
+                        )
                     }
                 )
             }
@@ -342,7 +344,9 @@ impl IndirectChild {
             &IndirectChild::ExplicitTable(ref container) => {
                 ValueRef::Table(
                     TableRef {
-                        data: Table::Explicit(container.borrow())
+                        data: Table::Explicit(
+                            unsafe { transmute_lifetime(&container.borrow()) }
+                        )
                     }
                 )
             }
@@ -392,14 +396,15 @@ impl IndirectChild {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum ValueRef<'a> {
     String(&'a StringNode),
     Table(TableRef<'a>),
 }
 
 impl<'a> ValueRef<'a> {
-    pub fn is_child(&self) -> bool {
-        match *self {
+    pub fn is_child(self) -> bool {
+        match self {
             ValueRef::String(..) => true,
             ValueRef::Table(ref table) => {
                 match table.markup() {
@@ -451,26 +456,28 @@ impl StringNode {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct TableRef<'a> {
     data: Table<'a>
 }
 
+#[derive(Copy, Clone)]
 enum Table<'a> {
     Inline(&'a InlineTable),
     Implicit(&'a HashMap<String, IndirectChild>),
-    Explicit(Ref<'a, Container>)
+    Explicit(&'a Container)
 }
 
 impl<'a> TableRef<'a> {
-    pub fn get(&self, key: &str) -> Option<ValueRef> {
+    pub fn get(self, key: &'a str) -> Option<ValueRef> {
         match self.data {
-            Table::Inline(ref data) => data.get(key),
-            Table::Implicit(ref map) => implicit_table_get(map, key),
-            Table::Explicit(ref data) => data.get(key),
+            Table::Inline(data) => data.get(key),
+            Table::Implicit(map) => implicit_table_get(map, key),
+            Table::Explicit(data) => data.get(key),
         }
     }
 
-    pub fn len_children(&self) -> usize {
+    pub fn len_children(self) -> usize {
         match self.data {
             Table::Inline(ref data) => data.len(),
             Table::Implicit(..) => 0,
@@ -478,7 +485,7 @@ impl<'a> TableRef<'a> {
         }
     }
 
-    pub fn iter_children(&self) -> ChildrenValues {
+    pub fn iter_children(self) -> ChildrenValues<'a> {
         match self.data {
             Table::Inline(ref tbl) => tbl.data().values.direct.iter_children(),
             Table::Implicit(..) => ChildrenValues { iter: None },
@@ -486,7 +493,7 @@ impl<'a> TableRef<'a> {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn len(self) -> usize {
         match self.data {
             Table::Inline(ref data) => data.len(),
             Table::Implicit(ref map) => implicit_table_len_logical(map),
@@ -494,8 +501,7 @@ impl<'a> TableRef<'a> {
         }
     }
 
-    pub fn iter<'b>(&'b self) 
-                    -> Box<Iterator<Item=(&'b str, ValueRef<'b>)>+'b> {
+    pub fn iter(self) -> Box<Iterator<Item=(&'a str, ValueRef<'a>)>+'a> {
         match self.data {
             Table::Inline(ref data) => data.iter(),
             Table::Implicit(ref map) => implicit_table_iter_logical(map),
@@ -503,7 +509,7 @@ impl<'a> TableRef<'a> {
         }
     }
 
-    pub fn markup(&self) -> TableMarkup {
+    pub fn markup(self) -> TableMarkup<'a> {
         match self.data {
             Table::Inline(ref data) => TableMarkup::Inline {
                 key: data.key(),
@@ -519,6 +525,7 @@ impl<'a> TableRef<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum TableMarkup<'a> {
     Inline{ key: &'a KeyMarkup, value: &'a ValueMarkup, comma_trivia: &'a str },
     Implicit,
@@ -533,8 +540,8 @@ pub enum ValueRefMut<'a> {
 }
 
 impl<'a> ValueRefMut<'a> {
-    pub fn is_child(&self) -> bool {
-        match *self {
+    pub fn is_child(self) -> bool {
+        match self {
             ValueRefMut::String(..)
             | ValueRefMut::InlineTable(..) => true,
             ValueRefMut::ImplicitTable(..)
@@ -658,6 +665,7 @@ impl<'a> ImplicitTableRef<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct ExplicitTableRef<'a>(&'a RefCell<Container>);
 
 impl<'a> ExplicitTableRef<'a> {
@@ -717,7 +725,9 @@ impl<'a> ExplicitTableRef<'a> {
 
     pub fn as_ref(&self) -> TableRef {
         TableRef {
-            data: Table::Explicit(self.0.borrow())
+            data: Table::Explicit(
+                unsafe { transmute_lifetime(&self.0.borrow()) }
+            )
         }
     }
 }
