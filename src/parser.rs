@@ -1051,7 +1051,7 @@ fn is_digit(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {Parser, ValueRef};
+    use {Document, Parser, ValueRef};
 
     macro_rules! bad {
         ($s:expr, $msg:expr) => ({
@@ -1065,6 +1065,33 @@ mod tests {
     fn as_str<'a>(v: ValueRef<'a>) -> Option<&'a str> {
         match v {
             ValueRef::String(str_node) => Some(str_node.get()),
+            _ => None
+        }
+    }
+
+    fn as_float(_: ValueRef) -> Option<f64> {
+        unimplemented!()
+    }
+
+    fn as_integer(_: ValueRef) -> Option<isize> {
+        unimplemented!()
+    }
+
+    fn as_bool(_: ValueRef) -> Option<bool> {
+        unimplemented!()
+    }
+
+    fn lookup<'a>(doc: &'a Document, path: &'a [&'a str])
+                  -> Option<ValueRef<'a>> {
+        doc.get(path[0]).and_then(|val| lookup_inner(val, &path[1..]))
+    }
+
+    fn lookup_inner<'a>(val: ValueRef<'a>, path: &'a [&'a str])
+                        -> Option<ValueRef<'a>> {
+        if path.len() == 0 { return Some(val) }
+        match val {
+            ValueRef::Table(t) =>
+                lookup_inner(t.get(path[0]).unwrap(), &path[1..]),
             _ => None
         }
     }
@@ -1169,7 +1196,6 @@ trimmed in raw strings.
                             is preserved.\n"));
     }
 
-/*
     #[test]
     fn tables_in_arrays() {
         let mut p = Parser::new(r#"
@@ -1211,19 +1237,25 @@ trimmed in raw strings.
     name = "plantain"
 "#);
         let table = p.parse().unwrap();
-        assert_eq!(table.lookup("fruit.0.name").and_then(|k| k.as_str()),
+        assert_eq!(lookup(&table, &["fruit","0","name"])
+                       .and_then(as_str),
                    Some("apple"));
-        assert_eq!(table.lookup("fruit.0.physical.color").and_then(|k| k.as_str()),
+        assert_eq!(lookup(&table, &["fruit","0","physical","color"])
+                       .and_then(as_str),
                    Some("red"));
-        assert_eq!(table.lookup("fruit.0.physical.shape").and_then(|k| k.as_str()),
+        assert_eq!(lookup(&table, &["fruit","0","physical","shape"])
+                       .and_then(as_str),
                    Some("round"));
-        assert_eq!(table.lookup("fruit.0.variety.0.name").and_then(|k| k.as_str()),
+        assert_eq!(lookup(&table, &["fruit","0","variety","0","name"])
+                       .and_then(as_str),
                    Some("red delicious"));
-        assert_eq!(table.lookup("fruit.0.variety.1.name").and_then(|k| k.as_str()),
+        assert_eq!(lookup(&table, &["fruit","0","variety","1","name"])
+                       .and_then(as_str),
                    Some("granny smith"));
-        assert_eq!(table.lookup("fruit.1.name").and_then(|k| k.as_str()),
+        assert_eq!(lookup(&table, &["fruit","1","name"]).and_then(as_str),
                    Some("banana"));
-        assert_eq!(table.lookup("fruit.1.variety.0.name").and_then(|k| k.as_str()),
+        assert_eq!(lookup(&table, &["fruit","1.variety","0","name"])
+                       .and_then(as_str),
                    Some("plantain"));
     }
 
@@ -1235,26 +1267,26 @@ trimmed in raw strings.
         assert!(Parser::new("a = \"\"\"\\  \r  \"\"\"").parse().is_none());
 
         let mut p = Parser::new("foo = '''\r'''");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").and_then(|k| k.as_str()), Some("\r"));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_str), Some("\r"));
 
         let mut p = Parser::new("foo = '\r'");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").and_then(|k| k.as_str()), Some("\r"));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_str), Some("\r"));
     }
 
     #[test]
     fn blank_literal_string() {
         let mut p = Parser::new("foo = ''");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").and_then(|k| k.as_str()), Some(""));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_str), Some(""));
     }
 
     #[test]
     fn many_blank() {
         let mut p = Parser::new("foo = \"\"\"\n\n\n\"\"\"");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").and_then(|k| k.as_str()), Some("\n\n"));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_str), Some("\n\n"));
     }
 
     #[test]
@@ -1263,9 +1295,9 @@ trimmed in raw strings.
             foo = \"\"\"\\\r\n\"\"\"
             bar = \"\"\"\\\r\n   \r\n   \r\n   a\"\"\"
         ");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").and_then(|k| k.as_str()), Some(""));
-        assert_eq!(table.lookup("bar").and_then(|k| k.as_str()), Some("a"));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_str), Some(""));
+        assert_eq!(lookup(&table, &["bar"]).and_then(as_str), Some("a"));
     }
 
     #[test]
@@ -1304,8 +1336,8 @@ trimmed in raw strings.
             ($actual:expr, $expected:expr) => ({
                 let f = format!("foo = {}", $actual);
                 let mut p = Parser::new(&f);
-                let table = Table(p.parse().unwrap());
-                assert_eq!(table.lookup("foo").and_then(|k| k.as_float()),
+                let table = p.parse().unwrap();
+                assert_eq!(lookup(&table, &["foo"]).and_then(as_float),
                            Some($expected));
             })
         }
@@ -1339,18 +1371,18 @@ trimmed in raw strings.
             \"character encoding\" = \"value\"
             \"ʎǝʞ\" = \"value\"
         ");
-        let table = Table(p.parse().unwrap());
-        assert!(table.lookup("foo").is_some());
-        assert!(table.lookup("-").is_some());
-        assert!(table.lookup("_").is_some());
-        assert!(table.lookup("8").is_some());
-        assert!(table.lookup("foo_3").is_some());
-        assert!(table.lookup("foo_-2--3--r23f--4-f2-4").is_some());
-        assert!(table.lookup("a").is_some());
-        assert!(table.lookup("!").is_some());
-        assert!(table.lookup("\"").is_some());
-        assert!(table.lookup("character encoding").is_some());
-        assert!(table.lookup("ʎǝʞ").is_some());
+        let table = p.parse().unwrap();
+        assert!(lookup(&table, &["foo"]).is_some());
+        assert!(lookup(&table, &["-"]).is_some());
+        assert!(lookup(&table, &["_"]).is_some());
+        assert!(lookup(&table, &["8"]).is_some());
+        assert!(lookup(&table, &["foo_3"]).is_some());
+        assert!(lookup(&table, &["foo_-2--3--r23f--4-f2-4"]).is_some());
+        assert!(lookup(&table, &["a"]).is_some());
+        assert!(lookup(&table, &["!"]).is_some());
+        assert!(lookup(&table, &["\""]).is_some());
+        assert!(lookup(&table, &["character encoding"]).is_some());
+        assert!(lookup(&table, &["ʎǝʞ"]).is_some());
     }
 
     #[test]
@@ -1385,10 +1417,10 @@ trimmed in raw strings.
             [\"f.f\"]
             [\"\\\"\"]
         ");
-        let table = Table(p.parse().unwrap());
-        assert!(table.lookup("a.b").is_some());
-        assert!(table.lookup("f f").is_some());
-        assert!(table.lookup("\"").is_some());
+        let table = p.parse().unwrap();
+        assert!(lookup(&table, &["a","b"]).is_some());
+        assert!(lookup(&table, &["f f"]).is_some());
+        assert!(lookup(&table, &["\""]).is_some());
     }
 
     #[test]
@@ -1419,8 +1451,8 @@ trimmed in raw strings.
             ($actual:expr, $expected:expr) => ({
                 let f = format!("foo = {}", $actual);
                 let mut p = Parser::new(&f);
-                let table = Table(p.parse().unwrap());
-                assert_eq!(table.lookup("foo").and_then(|k| k.as_integer()),
+                let table = p.parse().unwrap();
+                assert_eq!(lookup(&table, &["foo"]).and_then(as_integer),
                            Some($expected));
             })
         }
@@ -1456,19 +1488,19 @@ trimmed in raw strings.
     #[test]
     fn empty_string() {
         let mut p = Parser::new("foo = \"\"");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").unwrap().as_str(), Some(""));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_str), Some(""));
     }
 
     #[test]
     fn booleans() {
         let mut p = Parser::new("foo = true");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").unwrap().as_bool(), Some(true));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_bool), Some(true));
 
         let mut p = Parser::new("foo = false");
-        let table = Table(p.parse().unwrap());
-        assert_eq!(table.lookup("foo").unwrap().as_bool(), Some(false));
+        let table = p.parse().unwrap();
+        assert_eq!(lookup(&table, &["foo"]).and_then(as_bool), Some(false));
 
         assert!(Parser::new("foo = true2").parse().is_none());
         assert!(Parser::new("foo = false2").parse().is_none());
@@ -1530,5 +1562,4 @@ trimmed in raw strings.
             [a]
         ", "redefinition of table `a`");
     }
-*/
 }
