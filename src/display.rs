@@ -1,34 +1,38 @@
 use std::fmt::{Display, Error, Formatter, Write};
 
-use super::{Document, KeyMarkup, StringNode, TableKeyMarkup, TableMarkup};
-use super::{TableRef, ValueRef};
+use super::{Document, KeyMarkup, StringValue, TableKeyMarkup};
+use super::{ValueRef, Container, DirectChild, InlineArray};
+use super::{ContainerKind, InlineTable};
 
-fn join_values<'a, T, I>(values: I, sep: &str) -> String 
-                      where T: Display, I:Iterator<Item=T> {
-    let mut buff = String::new();
+fn fmt_join<'a, T, I>(f: &mut Formatter, values: I, sep: &str)
+                      -> Result<(), Error> where T: Display, I:Iterator<Item=T>{
     let mut values = values.peekable();
     loop {
         let value = values.next();
         match value {
             Some(value) => {
-                let _ = write!(buff, "{}", value);
+                try!(write!(f, "{}", value));
                 if values.peek().is_some() {
-                    let _ = write!(buff, "{}", sep);
+                    try!(write!(f, "{}", sep));
                 }
             }
             None => break,
         }
     }
-    buff
+    Ok(())
 }
 
-impl Display for Document {
+impl Display for Document { 
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        self.iter_syntactic()
-            .map(|v| v.fmt(f))
-            .find(Result::is_err)
-            .unwrap_or(Ok(()))
-            .and_then(|_| { f.write_str(&self.get_trailing_trivia()) })
+        fmt_join(f, self.iter_children(), "")
+        .and_then(|_| fmt_join(f, self.iter_containers(), ""))
+        .and_then(|_| write!(f, "{}", self.get_trailing_trivia()))
+    }
+}
+
+impl Display for DirectChild {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{}={}", self.key(), self.value())
     }
 }
 
@@ -36,21 +40,34 @@ impl<'a> Display for ValueRef<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match *self {
             ValueRef::String(node) => node.fmt(f),
-            ValueRef::Table(ref table) => table.fmt(f)
+            ValueRef::Array(arr) => arr.fmt(f),
+            ValueRef::Table(table) => table.fmt(f)
         }
     }
 }
 
-impl<'a> Display for StringNode {
+impl Display for StringValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f,
-               "{}={}{}{}",
-               self.key(),
+               "{}{}{}",
                self.markup().get_leading_trivia(),
                self.raw(),
                self.markup().get_trailing_trivia())
     }
 }
+
+impl Display for InlineArray {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        unimplemented!()
+    }
+}
+
+impl Display for InlineTable {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        unimplemented!()
+    }
+}
+
 
 impl<'a> Display for KeyMarkup {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
@@ -62,30 +79,6 @@ impl<'a> Display for KeyMarkup {
     }
 }
 
-impl<'a> Display for TableRef<'a> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self.markup() {
-            TableMarkup::Inline{ key, value, comma_trivia } => {
-                write!(f,
-                       "{}={}[{}{}]{}",
-                       key,
-                       value.get_leading_trivia(),
-                       join_values(self.iter_children(), ","),
-                       comma_trivia,
-                       value.get_trailing_trivia())
-            }
-            TableMarkup::Implicit => Ok(()),
-            TableMarkup::Explicit{ leading_trivia, keys } => {
-                write!(f,
-                       "{}[{}]{}",
-                       leading_trivia,
-                       join_values(keys.iter(), "."),
-                       join_values(self.iter_children(), ""))
-            }
-        }
-    }
-}
-
 impl<'a> Display for TableKeyMarkup {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f,
@@ -93,5 +86,27 @@ impl<'a> Display for TableKeyMarkup {
                self.get_leading_trivia(),
                self.raw(),
                self.get_trailing_trivia())
+    }
+}
+
+impl Display for Container {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let is_array = match self.kind {
+            ContainerKind::Array => true,
+            ContainerKind::Table => false
+        };
+        try!(write!(f, "{}", self.get_leading_trivia()));
+        if is_array {
+            try!(write!(f, "[["));
+        } else {
+            try!(write!(f, "["));
+        }
+        try!(fmt_join(f, self.keys().iter(), "."));
+        if is_array {
+            try!(write!(f, "]]"));
+        } else {
+            try!(write!(f, "]"));
+        }
+        fmt_join(f, self.iter_children(), "")
     }
 }

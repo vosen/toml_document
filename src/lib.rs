@@ -2,9 +2,9 @@
 // #![deny(missing_docs)]
 // #![cfg_attr(test, deny(warnings))]
 
-#![deny(unused_variables)]
+// #![deny(unused_variables)]
 // #![deny(dead_code)]
-#![deny(unused_imports)]
+// #![deny(unused_imports)]
 
 use std::cell::{RefCell};
 use std::collections::HashMap;
@@ -314,8 +314,13 @@ enum Value {
     Float { parsed: f64, raw: String },
     Boolean(bool),
     Datetime(String),
-    Array { values: Vec<FormattedValue>, comma_trail: String },
+    InlineArray(InlineArrayData),
     InlineTable(TableData)
+}
+
+struct InlineArrayData {
+    values: Vec<FormattedValue>,
+    comma_trail: String
 }
 
 impl Value {
@@ -338,7 +343,7 @@ impl Value {
             Value::Float {..} => "float",
             Value::Boolean(..) => "boolean",
             Value::Datetime(..) => "datetime",
-            Value::Array {..} => "array",
+            Value::InlineArray(..) => "array",
             Value::InlineTable(..) => "table",
         }
     }
@@ -396,7 +401,7 @@ impl IndirectChild {
     }
 }
 
-struct Container {
+pub struct Container {
     data: ContainerData,
     // Path to the table, eg:
     //  [   a   .   b   ]
@@ -461,7 +466,7 @@ impl ContainerData {
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
-enum ContainerKind {
+pub enum ContainerKind {
     Table,
     Array,
 }

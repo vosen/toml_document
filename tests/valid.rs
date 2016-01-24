@@ -5,11 +5,11 @@ use std::collections::BTreeMap;
 
 use rustc_serialize::json::Json;
 
-use toml_document::{Parser, ValueRef};
+use toml_document::{Parser, EntryRef};
 
-type LogicalValues<'a> = Box<Iterator<Item = (&'a str, ValueRef<'a>)> + 'a>;
+type LogicalValues<'a> = Box<Iterator<Item = (&'a str, EntryRef<'a>)> + 'a>;
 
-fn val_to_json((key, value): (&str, ValueRef)) -> (String, Json) {
+fn val_to_json((key, value): (&str, EntryRef)) -> (String, Json) {
   fn typed_json(s: &str, json: Json) -> Json {
     let mut map = BTreeMap::new();
       map.insert(format!("{}", "type"), Json::String(format!("{}", s)));
@@ -17,11 +17,14 @@ fn val_to_json((key, value): (&str, ValueRef)) -> (String, Json) {
       Json::Object(map)
   }
   match &value {
-    &ValueRef::String(ref s) => {
+    &EntryRef::String(ref s) => {
       let json_string = Json::String(s.get().to_string());
       (key.to_string(), typed_json("string", json_string))
     }
-    &ValueRef::Table(ref table) => {
+    &EntryRef::Array(..) => {
+      unimplemented!()
+    }
+    &EntryRef::Table(ref table) => {
       (key.to_string(), to_json(table.iter()))
     },
   }
@@ -43,7 +46,7 @@ fn run(toml: &str, json: &str) {
 
     // compare logical structure with jsons
     let json = Json::from_str(json).unwrap();
-    let toml_json = to_json(doc.iter_logical());
+    let toml_json = to_json(doc.iter());
     assert!(json == toml_json,
             "expected\n{}\ngot\n{}\n",
             json.pretty(),

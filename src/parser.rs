@@ -9,7 +9,7 @@ use std::cell::{RefCell};
 use std::rc::Rc;
 
 use super::{Container, ContainerData, FormattedValue, FormattedKey, IndirectChild}; 
-use super::{Document, ValuesMap, TraversalPosition};
+use super::{Document, ValuesMap, TraversalPosition, InlineArrayData};
 use super::Value as DocValue;
 use super::{StringData, TableData};
 
@@ -730,10 +730,12 @@ impl<'a> Parser<'a> {
                 if ret.len() > 0 {
                     trail_aux = format!(",{}", trail_aux);
                 }
-                return Some(DocValue::Array {
-                    values: ret,
-                    comma_trail: trail_aux
-                })
+                return Some(DocValue::InlineArray(
+                    InlineArrayData {
+                        values: ret,
+                        comma_trail: trail_aux
+                    }
+                ))
             }
 
             // Attempt to parse a value, triggering an error if it's the wrong
@@ -761,7 +763,9 @@ impl<'a> Parser<'a> {
             if !self.eat(',') { break }
         }
         if !self.expect(']') { return None }
-        return Some(DocValue::Array{ values: ret, comma_trail: "".to_string()})
+        return Some(DocValue::InlineArray(
+            InlineArrayData { values: ret, comma_trail: "".to_string() }
+        ))
     }
 
     fn inline_table(&mut self, _start: usize) -> Option<DocValue> {
@@ -815,7 +819,7 @@ impl<'a> Parser<'a> {
                         let next = values.traverse();
                         return self.insert_exec_recurse(next, keys, idx+1, f);
                     }
-                    &mut DocValue::Array { values: ref mut vec, ..} => {
+                    &mut DocValue::InlineArray(InlineArrayData {values: ref mut vec, ..}) => {
                         let has_tables = match vec.first() {
                             None => false,
                             Some(v) => v.value.is_table()
@@ -1051,7 +1055,7 @@ fn is_digit(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {Document, Parser, ValueRef};
+    use {Document, Parser, EntryRef};
 
     macro_rules! bad {
         ($s:expr, $msg:expr) => ({
@@ -1062,37 +1066,41 @@ mod tests {
         })
     }
 
-    fn as_str<'a>(v: ValueRef<'a>) -> Option<&'a str> {
+    fn as_str<'a>(v: EntryRef<'a>) -> Option<&'a str> {
         match v {
-            ValueRef::String(str_node) => Some(str_node.get()),
+            EntryRef::String(str_node) => Some(str_node.get()),
             _ => None
         }
     }
 
-    fn as_float(_: ValueRef) -> Option<f64> {
+    fn as_float(_: EntryRef) -> Option<f64> {
         unimplemented!()
     }
 
-    fn as_integer(_: ValueRef) -> Option<isize> {
+    fn as_integer(_: EntryRef) -> Option<isize> {
         unimplemented!()
     }
 
-    fn as_bool(_: ValueRef) -> Option<bool> {
+    fn as_bool(_: EntryRef) -> Option<bool> {
         unimplemented!()
     }
 
     fn lookup<'a>(doc: &'a Document, path: &'a [&'a str])
-                  -> Option<ValueRef<'a>> {
+                  -> Option<EntryRef<'a>> {
         doc.get(path[0]).and_then(|val| lookup_inner(val, &path[1..]))
     }
 
-    fn lookup_inner<'a>(val: ValueRef<'a>, path: &'a [&'a str])
-                        -> Option<ValueRef<'a>> {
+    fn lookup_inner<'a>(val: EntryRef<'a>, path: &'a [&'a str])
+                        -> Option<EntryRef<'a>> {
         if path.len() == 0 { return Some(val) }
-        match val {
-            ValueRef::Table(t) =>
-                lookup_inner(t.get(path[0]).unwrap(), &path[1..]),
-            _ => None
+        let numeric = path[0].parse::<usize>();
+        match numeric {
+            Ok(numeric) => panic!(),
+            Err(..) => match val {
+                EntryRef::Table(t) =>
+                    lookup_inner(t.get(path[0]).unwrap(), &path[1..]),
+                _ => None
+            }
         }
     }
 
