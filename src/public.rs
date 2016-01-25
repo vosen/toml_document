@@ -382,16 +382,16 @@ impl<'a> EntryRef<'a> {
         match self {
             EntryRef::String(..) => true,
             EntryRef::Array(arr) => {
-                match arr.markup() {
-                    ArrayMarkup::Inline => true,
-                    ArrayMarkup::Explicit => false
+                match arr.to_value() {
+                    ArrayValue::Inline(..) => true,
+                    ArrayValue::OfTables => false
                 }
             }
             EntryRef::Table(table) => {
-                match table.markup() {
-                    TableMarkup::Inline{ .. } =>true,
-                    TableMarkup::Implicit
-                    | TableMarkup::Explicit{ .. } => false,
+                match table.to_value() {
+                    TableValue::Inline(..) =>true,
+                    TableValue::Implicit
+                    | TableValue::Explicit(..) => false,
                 }
             }
         }
@@ -521,27 +521,20 @@ impl<'a> TableEntry<'a> {
         }
     }
 
-    pub fn markup(self) -> TableMarkup<'a> {
+    pub fn to_value(self) -> TableValue<'a> {
         match self.data {
-            Table::Inline(ref data) => TableMarkup::Inline {
-                key: data.key(),
-                value: data.markup(),
-                comma_trivia: data.get_comma_trivia()
-            },
-            Table::Implicit(..) => TableMarkup::Implicit,
-            Table::Explicit(ref data) => TableMarkup::Explicit {
-                leading_trivia: data.get_leading_trivia(),
-                keys: data.keys()
-            },
+            Table::Inline(data) => TableValue::Inline(data),
+            Table::Implicit(..) => TableValue::Implicit,
+            Table::Explicit(data) => TableValue::Explicit(data)
         }
     }
 }
 
 #[derive(Clone, Copy)]
-pub enum TableMarkup<'a> {
-    Inline{ key: &'a KeyMarkup, value: &'a ValueMarkup, comma_trivia: &'a str },
+pub enum TableValue<'a> {
+    Inline(&'a InlineTable),
     Implicit,
-    Explicit{ leading_trivia: &'a str, keys: &'a [TableKeyMarkup] },
+    Explicit(&'a Container),
 }
 
 #[derive(Clone, Copy)]
@@ -555,34 +548,35 @@ enum Array<'a> {
     Explicit(&'a [Rc<RefCell<Container>>])
 }
 
-pub enum ArrayMarkup {
-    Inline,
-    Explicit
+#[derive(Copy, Clone)]
+pub enum ArrayValue<'a> {
+    Inline(&'a InlineArray),
+    OfTables
 }
 
 impl<'a> ArrayEntry<'a> {
-    pub fn markup(&self) -> ArrayMarkup {
+    pub fn to_value(self) -> ArrayValue<'a> {
         match self.data {
-            Array::Inline(..) => ArrayMarkup::Inline,
-            Array::Explicit(..) => ArrayMarkup::Explicit
+            Array::Inline(arr) => ArrayValue::Inline(arr),
+            Array::Explicit(..) => ArrayValue::OfTables
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn len(self) -> usize {
         match self.data {
             Array::Inline(data) => data.len(),
             Array::Explicit(vec) => vec.len()
         }
     }
 
-    pub fn get(&self, idx: usize) -> EntryRef {
+    pub fn get(self, idx: usize) -> EntryRef<'a> {
         match self.data {
             Array::Inline(data) => data.get(idx).to_entry(),
             Array::Explicit(vec) => unimplemented!()
         }
     }
 
-    pub fn iter(&self) -> Box<Iterator<Item=(&'a str, EntryRef<'a>)> + 'a> {
+    pub fn iter(self) -> Box<Iterator<Item=(&'a str, EntryRef<'a>)> + 'a> {
         unimplemented!()
     }
 }
