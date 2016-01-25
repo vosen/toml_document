@@ -42,10 +42,6 @@ unsafe fn transmute_lifetime<'a, 'b, T>(x: &'a T) -> &'b T {
     ::std::mem::transmute(x)
 }
 
-unsafe fn transmute_lifetime_mut<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
-    ::std::mem::transmute(x)
-}
-
 fn direct_cursor<'a>((k, v): (&'a String, &'a Rc<RefCell<ValueNode>>)) -> (&'a str, EntryRef<'a>) {
     (k, ValueNode::as_cursor(v))
 }
@@ -83,15 +79,6 @@ impl Document {
                     .get(key)
                     .map_or(None, |child| Some(child.as_cursor()))
             })
-    }
-
-    pub fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        if let some @ Some(_)  = self.values.get_mut(key) {
-            return some;
-        };
-        self.container_index
-            .get_mut(key)
-            .map_or(None, |child| child.get_mut(key))
     }
 
     pub fn len(&self) -> usize {
@@ -221,18 +208,8 @@ impl ValuesMap {
             .map(|val| { ValueNode::as_cursor(val) })
     }
 
-    fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        self.kvp_index
-            .get_mut(key)
-            .map(|val| { ValueNode::as_cursor_mut(val) })
-    }
-
     fn get_at(&self, idx: usize) -> &Rc<RefCell<ValueNode>> {
         &self.kvp_list[idx]
-    }
-
-    fn get_at_mut(&mut self, idx: usize) -> &mut Rc<RefCell<ValueNode>> {
-        &mut self.kvp_list[idx]
     }
 
     fn len(&self) -> usize {
@@ -281,28 +258,6 @@ impl ValueNode {
                             InlineTable::new(&value_wrapper)
                         )
                     }
-                )
-            }
-            _ => unimplemented!()
-        }
-    }
-
-    fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> EntryRefMut<'a> {
-        fn borrow_mut<'b>(r: &'b RefCell<ValueNode>) -> &'b mut ValueNode {
-            unsafe { transmute_lifetime_mut(&mut r.borrow_mut()) }
-        }
-        let value = { &r.borrow().value.value };
-        match *value {
-            Value::String(..) => {
-                drop(value);
-                EntryRefMut::String(
-                    StringValue::new_mut(&mut borrow_mut(r).value)
-                )
-            }
-            Value::InlineArray(..) => {
-                drop(value);
-                EntryRefMut::InlineArray(
-                    InlineArray::new_mut(&mut borrow_mut(r).value)
                 )
             }
             _ => unimplemented!()
@@ -367,15 +322,6 @@ impl super::ContainerData {
             })
     }
 
-    fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        if let some @ Some(_) =  self.direct.get_mut(key) {
-            return some;
-        };
-        self.indirect
-            .get_mut(key)
-            .map_or(None, |child| child.get_mut(key))
-    }
-
     fn iter_logical<'a>(&'a self)
                         -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
         iter_logical(&self.direct, &self.indirect)
@@ -411,22 +357,6 @@ impl IndirectChild {
         }
     }
 
-    fn as_cursor_mut(&mut self) -> EntryRefMut {
-        match self {
-            &mut IndirectChild::ImplicitTable(ref mut map) => {
-                EntryRefMut::ImplicitTable(
-                    ImplicitTableEntry::new(map)
-                )
-            }
-            &mut IndirectChild::ExplicitTable(ref container) => {
-                EntryRefMut::ExplicitTable(
-                    ExplicitTableEntry::new(container)
-                )
-            }
-            &mut IndirectChild::Array(..) => unimplemented!()
-        }
-    }
-
     fn get(&self, key: &str) -> Option<EntryRef> {
         match self {
             &IndirectChild::ImplicitTable(ref map) => {
@@ -436,19 +366,6 @@ impl IndirectChild {
                 unsafe { transmute_lifetime(&container.borrow().data) }.get(key)
             }
             &IndirectChild::Array(..) => panic!()
-        }
-    }
-
-    fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        match *self {
-            IndirectChild::ImplicitTable(ref mut map) => {
-                map.get_mut(key).map(IndirectChild::as_cursor_mut)
-            }
-            IndirectChild::ExplicitTable(ref mut container) => {
-                let container_data = &mut container.borrow_mut().data;
-                unsafe { transmute_lifetime_mut(container_data) }.get_mut(key)
-            }
-            IndirectChild::Array(..) => panic!()
         }
     }
 }
@@ -670,30 +587,6 @@ impl<'a> ArrayEntry<'a> {
     }
 }
 
-define_view!(ExplicitArray, Vec<Rc<RefCell<Container>>>);
-
-pub enum EntryRefMut<'a> {
-    String(&'a mut StringValue),
-    InlineArray(&'a mut InlineArray),
-    ArrayOfTables(&'a mut ExplicitArray),
-    InlineTable(&'a mut InlineTable),
-    ImplicitTable(ImplicitTableEntry<'a>),
-    ExplicitTable(ExplicitTableEntry<'a>),
-}
-
-impl<'a> EntryRefMut<'a> {
-    pub fn is_child(self) -> bool {
-        match self {
-            EntryRefMut::String(..)
-            | EntryRefMut::InlineArray(..)
-            | EntryRefMut::InlineTable(..) => true,
-            EntryRefMut::ImplicitTable(..)
-            | EntryRefMut::ArrayOfTables(..)
-            | EntryRefMut::ExplicitTable(.. ) => false
-        }
-    }
-}
-
 define_view!(InlineTable, ValueNode);
 
 impl InlineTable {
@@ -704,27 +597,12 @@ impl InlineTable {
         }
     }
 
-    fn data_mut(&mut self) -> &mut TableData {
-        match self.0.value.value {
-            super::Value::InlineTable(ref mut table_data) => table_data,
-            _ => unreachable!()
-        }
-    }
-
     pub fn get(&self, key: &str) -> Option<EntryRef> {
         self.data().values.direct.get(key)
     }
 
-    pub fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        self.data_mut().values.direct.get_mut(key)
-    }
-
     pub fn get_at(&self, idx: usize) -> EntryRef {
         ValueNode::as_cursor(self.data().values.direct.get_at(idx))
-    }
-
-    pub fn get_at_mut(&mut self, idx: usize) -> EntryRefMut {
-        ValueNode::as_cursor_mut(self.data_mut().values.direct.get_at_mut(idx))
     }
 
     pub fn len(&self) -> usize {
@@ -762,8 +640,6 @@ impl InlineTable {
     }
 }
 
-pub struct ImplicitTableEntry<'a>(&'a mut HashMap<String, IndirectChild>);
-
 fn implicit_table_get<'a>(t: &'a HashMap<String, IndirectChild>,
                           key: &str) -> Option<EntryRef<'a>> {
     t.get(key).map(IndirectChild::as_cursor)
@@ -780,101 +656,6 @@ fn implicit_table_iter_logical<'a>(t: &'a HashMap<String, IndirectChild>)
     Box::new(iter)
 }
 
-impl<'a> ImplicitTableEntry<'a> {
-    fn new(src: &'a mut HashMap<String, IndirectChild>) -> ImplicitTableEntry {
-        ImplicitTableEntry(src)
-    }
-
-    pub fn get(&self, key: &str) -> Option<EntryRef> {
-        implicit_table_get(self.0, key)
-    }
-
-    pub fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        self.0.get_mut(key).map(IndirectChild::as_cursor_mut)
-    }
-
-    pub fn len(&self) -> usize {
-        implicit_table_len_logical(self.0)
-    }
-
-    pub fn iter<'b>(&'b self)
-                    -> Box<Iterator<Item=(&'b str, EntryRef<'b>)>+'b> {
-        implicit_table_iter_logical(self.0)
-    }
-
-    pub fn as_ref(&self) -> TableEntry {
-        TableEntry {
-            data: Table::Implicit(self.0)
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct ExplicitTableEntry<'a>(&'a RefCell<Container>);
-
-impl<'a> ExplicitTableEntry<'a> {
-    fn new(src: &'a RefCell<Container>) -> ExplicitTableEntry {
-        ExplicitTableEntry(src)
-    }
-
-    fn borrow<'b>(&'b self) -> &'b Container {
-        unsafe { transmute_lifetime(&*self.0.borrow()) }
-    }
-
-    fn borrow_mut<'b>(&'b mut self) -> &'b mut Container {
-        unsafe { transmute_lifetime_mut(&mut *self.0.borrow_mut()) }
-    }
-
-    pub fn get(&self, key: &str) -> Option<EntryRef> {
-        self.borrow().get(key)
-    }
-
-    pub fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        self.borrow_mut().data.get_mut(key)
-    }
-
-    pub fn len_children(&self) -> usize {
-        self.borrow().len_children()
-    }
-
-    pub fn iter_children(&self) -> DirectChildren {
-        self.borrow().data.direct.iter_children()
-    }
-
-    pub fn len(&self) -> usize {
-        self.borrow().len_logical()
-    }
-
-    pub fn iter<'b>(&'b self)
-                    -> Box<Iterator<Item=(&'b str, EntryRef<'b>)>+'b> {
-        self.borrow().iter_logical()
-    }
-
-    pub fn get_leading_trivia(&self) -> &str {
-        &self.borrow().get_leading_trivia()
-    }
-
-    pub fn set_leading_trivia(&mut self, s: String) {
-        KeyMarkup::check_leading_trivia(&*s);
-        self.borrow_mut().lead = s;
-    }
-
-    pub fn keys(&self) -> &[TableKeyMarkup] {
-        self.borrow().keys()
-    }
-
-    pub fn keys_mut(&mut self) -> &mut [TableKeyMarkup] {
-        TableKeyMarkup::new_slice_mut(&mut*self.borrow_mut().keys)
-    }
-
-    pub fn as_ref(&self) -> TableEntry {
-        TableEntry {
-            data: Table::Explicit(
-                unsafe { transmute_lifetime(&self.0.borrow()) }
-            )
-        }
-    }
-}
 
 define_view!(TableKeyMarkup, FormattedKey);
 
