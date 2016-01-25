@@ -92,7 +92,7 @@ impl<'a> Display for TableKeyMarkup {
 impl Display for Container {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let is_array = match self.kind {
-            ContainerKind::Array => true,
+            ContainerKind::ArrayMember => true,
             ContainerKind::Table => false
         };
         try!(write!(f, "{}", self.get_leading_trivia()));

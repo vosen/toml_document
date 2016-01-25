@@ -420,7 +420,7 @@ impl Container {
             data: data,
             keys: ks,
             lead: lead,
-            kind: ContainerKind::Array,
+            kind: ContainerKind::ArrayMember,
         }
     }
 
@@ -467,8 +467,8 @@ impl ContainerData {
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub enum ContainerKind {
-    Table,
-    Array,
+    Table, 
+    ArrayMember,
 }
 
 struct FormattedKey {

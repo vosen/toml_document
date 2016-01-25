@@ -350,7 +350,7 @@ impl Container {
 
     pub fn to_entry(&self) -> EntryRef {
         match self.kind {
-            ContainerKind::Array => panic!(),
+            ContainerKind::ArrayMember => panic!(),
             ContainerKind::Table => unimplemented!()
         }
     }
