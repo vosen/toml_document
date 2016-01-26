@@ -24,6 +24,9 @@ fn val_to_json((key, value): (&str, EntryRef)) -> (String, Json) {
     &EntryRef::Array(..) => {
       unimplemented!()
     }
+    &EntryRef::Boolean(..) => {
+      unimplemented!()
+    }
     &EntryRef::Table(ref table) => {
       (key.to_string(), to_json(table.iter()))
     },

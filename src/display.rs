@@ -1,6 +1,6 @@
 use std::fmt::{Display, Error, Formatter, Write};
 
-use super::{Document, KeyMarkup, StringValue, TableKeyMarkup};
+use super::{Document, KeyMarkup, StringValue, TableKeyMarkup, BoolValue};
 use super::{ValueRef, Container, DirectChild, InlineArray};
 use super::{ContainerKind, InlineTable};
 
@@ -40,8 +40,9 @@ impl<'a> Display for ValueRef<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match *self {
             ValueRef::String(node) => node.fmt(f),
+            ValueRef::Boolean(node) => node.fmt(f),
             ValueRef::Array(arr) => arr.fmt(f),
-            ValueRef::Table(table) => table.fmt(f)
+            ValueRef::Table(table) => table.fmt(f),
         }
     }
 }
@@ -53,6 +54,16 @@ impl Display for StringValue {
                self.markup().get_leading_trivia(),
                self.raw(),
                self.markup().get_trailing_trivia())
+    }
+}
+
+impl Display for BoolValue {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        if self.get() {
+            write!(f, "true")
+        } else {
+            write!(f, "false")
+        }
     }
 }
 

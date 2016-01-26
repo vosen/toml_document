@@ -1055,7 +1055,7 @@ fn is_digit(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {Document, Parser, EntryRef};
+    use {Document, Parser, EntryRef, BoolValue};
 
     macro_rules! bad {
         ($s:expr, $msg:expr) => ({
@@ -1066,8 +1066,8 @@ mod tests {
         })
     }
 
-    fn as_str<'a>(v: EntryRef<'a>) -> Option<&'a str> {
-        match v {
+    fn as_str<'a>(entry: EntryRef<'a>) -> Option<&'a str> {
+        match entry {
             EntryRef::String(str_node) => Some(str_node.get()),
             _ => None
         }
@@ -1081,8 +1081,11 @@ mod tests {
         unimplemented!()
     }
 
-    fn as_bool(_: EntryRef) -> Option<bool> {
-        unimplemented!()
+    fn as_bool(entry: EntryRef) -> Option<bool> {
+        match entry {
+            EntryRef::Boolean(value) => Some(value.get()),
+            _ => None
+        }
     }
 
     fn lookup<'a>(doc: &'a Document, path: &'a [&'a str])

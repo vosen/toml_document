@@ -38,6 +38,20 @@ macro_rules! define_view {
     )
 }
 
+macro_rules! impl_value_markup {
+    ($name: ident) => (
+        impl $name {
+            pub fn markup(&self) -> &ValueMarkup {
+                &self.0.markup
+            }
+
+            pub fn markup_mut(&mut self) -> &mut ValueMarkup {
+                &mut self.0.markup
+            }
+        }
+    )
+}
+
 unsafe fn transmute_lifetime<'a, 'b, T>(x: &'a T) -> &'b T {
     ::std::mem::transmute(x)
 }
@@ -169,6 +183,7 @@ impl DirectChild {
 #[derive(Clone,Copy)]
 pub enum ValueRef<'a> {
     String(&'a StringValue),
+    Boolean(&'a BoolValue),
     Array(&'a InlineArray),
     Table(&'a InlineTable)
 }
@@ -178,6 +193,9 @@ impl<'a> ValueRef<'a> {
         match src.value {
             Value::String(..) => ValueRef::String(
                 StringValue::new(src)
+            ),
+            Value::Boolean(..) => ValueRef::Boolean(
+                BoolValue::new(src)
             ),
             Value::InlineArray(..) => ValueRef::Array(
                 InlineArray::new(src)
@@ -189,6 +207,7 @@ impl<'a> ValueRef<'a> {
     pub fn to_entry(self) -> EntryRef<'a> {
         match self {
             ValueRef::String(val) => EntryRef::String(val),
+            ValueRef::Boolean(val) => EntryRef::Boolean(val),
             ValueRef::Array(arr) => {
                 EntryRef::Array(
                       ArrayEntry {
@@ -258,6 +277,14 @@ impl ValueNode {
                             InlineTable::new(&value_wrapper)
                         )
                     }
+                )
+            }
+            Value::Boolean(..) => {
+                let value_wrapper = unsafe { transmute_lifetime(&*r.borrow()) };                
+                EntryRef::Boolean(
+                    BoolValue::new(
+                        &unsafe { transmute_lifetime(&*r.borrow()) }.value
+                    )
                 )
             }
             _ => unimplemented!()
@@ -373,6 +400,7 @@ impl IndirectChild {
 #[derive(Clone, Copy)]
 pub enum EntryRef<'a> {
     String(&'a StringValue),
+    Boolean(&'a BoolValue),
     Array(ArrayEntry<'a>),
     Table(TableEntry<'a>),
 }
@@ -380,7 +408,8 @@ pub enum EntryRef<'a> {
 impl<'a> EntryRef<'a> {
     pub fn is_child(self) -> bool {
         match self {
-            EntryRef::String(..) => true,
+            EntryRef::String(..)
+            | EntryRef::Boolean(..)=> true,
             EntryRef::Array(arr) => {
                 match arr.to_value() {
                     ArrayValue::Inline(..) => true,
@@ -398,8 +427,24 @@ impl<'a> EntryRef<'a> {
     }
 }
 
-define_view!(StringValue, FormattedValue);
+define_view!(BoolValue, FormattedValue);
+impl_value_markup!(BoolValue);
 
+impl BoolValue {
+    pub fn get(&self) -> bool {
+        match self.0.value {
+            Value::Boolean(data) => data,
+            _ => unreachable!()
+        }
+    }
+
+    pub fn set(&mut self, val: bool) {
+        self.0.value = Value::Boolean(val);
+    }
+}
+
+define_view!(StringValue, FormattedValue);
+impl_value_markup!(StringValue);
 
 impl StringValue {
     pub fn get(&self) -> &str {
@@ -414,13 +459,6 @@ impl StringValue {
             &mut Value::String(ref mut data) => data.set_checked(s),
             _ => unreachable!()
         }
-    }
-    pub fn markup(&self) -> &ValueMarkup {
-        &self.0.markup
-    }
-
-    pub fn markup_mut(&mut self) -> &mut ValueMarkup {
-        &mut self.0.markup
     }
 
     pub fn raw(&self) -> &str {
