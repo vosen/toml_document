@@ -21,10 +21,19 @@ fn val_to_json((key, value): (&str, EntryRef)) -> (String, Json) {
       let json_string = Json::String(s.get().to_string());
       (key.to_string(), typed_json("string", json_string))
     }
-    &EntryRef::Array(..) => {
+    &EntryRef::Integer(..) => {
+      unimplemented!()
+    }
+    &EntryRef::Float(..) => {
       unimplemented!()
     }
     &EntryRef::Boolean(..) => {
+      unimplemented!()
+    }
+    &EntryRef::Datetime(..) => {
+      unimplemented!()
+    }
+    &EntryRef::Array(..) => {
       unimplemented!()
     }
     &EntryRef::Table(ref table) => {

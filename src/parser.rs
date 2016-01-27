@@ -1073,12 +1073,18 @@ mod tests {
         }
     }
 
-    fn as_float(_: EntryRef) -> Option<f64> {
-        unimplemented!()
+    fn as_float(entry: EntryRef) -> Option<f64> {
+        match entry {
+            EntryRef::Float(value) => Some(value.get()),
+            _ => None
+        }
     }
 
-    fn as_integer(_: EntryRef) -> Option<isize> {
-        unimplemented!()
+    fn as_integer(entry: EntryRef) -> Option<i64> {
+        match entry {
+            EntryRef::Integer(value) => Some(value.get()),
+            _ => None
+        }
     }
 
     fn as_bool(entry: EntryRef) -> Option<bool> {
@@ -1098,7 +1104,11 @@ mod tests {
         if path.len() == 0 { return Some(val) }
         let numeric = path[0].parse::<usize>();
         match numeric {
-            Ok(numeric) => panic!(),
+            Ok(index) => match val {
+                EntryRef::Array(arr) =>
+                    lookup_inner(arr.get(index), &path[1..]),
+                _ => None
+            },
             Err(..) => match val {
                 EntryRef::Table(t) =>
                     lookup_inner(t.get(path[0]).unwrap(), &path[1..]),
@@ -1265,7 +1275,7 @@ trimmed in raw strings.
                    Some("granny smith"));
         assert_eq!(lookup(&table, &["fruit","1","name"]).and_then(as_str),
                    Some("banana"));
-        assert_eq!(lookup(&table, &["fruit","1.variety","0","name"])
+        assert_eq!(lookup(&table, &["fruit","1","variety","0","name"])
                        .and_then(as_str),
                    Some("plantain"));
     }

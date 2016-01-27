@@ -183,7 +183,10 @@ impl DirectChild {
 #[derive(Clone,Copy)]
 pub enum ValueRef<'a> {
     String(&'a StringValue),
+    Integer(&'a IntegerValue),
+    Float(&'a FloatValue),
     Boolean(&'a BoolValue),
+    Datetime(&'a DatetimeValue),
     Array(&'a InlineArray),
     Table(&'a InlineTable)
 }
@@ -194,20 +197,34 @@ impl<'a> ValueRef<'a> {
             Value::String(..) => ValueRef::String(
                 StringValue::new(src)
             ),
+            Value::Integer{..} => ValueRef::Integer(
+                IntegerValue::new(src)
+            ),
+            Value::Float{..} => ValueRef::Float(
+                FloatValue::new(src)
+            ),
             Value::Boolean(..) => ValueRef::Boolean(
                 BoolValue::new(src)
+            ),
+            Value::Datetime(..) => ValueRef::Datetime(
+                DatetimeValue::new(src)
             ),
             Value::InlineArray(..) => ValueRef::Array(
                 InlineArray::new(src)
             ),
-            _ => unimplemented!()
+            Value::InlineTable(..) => ValueRef::Table(
+                InlineTable::new(src)
+            ),
         }
     }
 
     pub fn to_entry(self) -> EntryRef<'a> {
         match self {
             ValueRef::String(val) => EntryRef::String(val),
+            ValueRef::Integer(val) => EntryRef::Integer(val),
+            ValueRef::Float(val) => EntryRef::Float(val),
             ValueRef::Boolean(val) => EntryRef::Boolean(val),
+            ValueRef::Datetime(val) => EntryRef::Datetime(val),
             ValueRef::Array(arr) => {
                 EntryRef::Array(
                       ArrayEntry {
@@ -215,7 +232,13 @@ impl<'a> ValueRef<'a> {
                     }
                 )
             },
-            _ => unimplemented!()
+            ValueRef::Table(arr) => {
+                EntryRef::Table(
+                      TableEntry {
+                        data: Table::Inline(arr)
+                    }
+                )
+            },
         }
     }
 }
@@ -259,6 +282,34 @@ impl ValueNode {
                     )
                 )
             }
+            Value::Integer{..} => {
+                EntryRef::Integer(
+                    IntegerValue::new(
+                        &unsafe { transmute_lifetime(&*r.borrow()) }.value
+                    )
+                )
+            }
+            Value::Float{..} => {
+                EntryRef::Float(
+                    FloatValue::new(
+                        &unsafe { transmute_lifetime(&*r.borrow()) }.value
+                    )
+                )
+            }
+            Value::Boolean(..) => {
+                EntryRef::Boolean(
+                    BoolValue::new(
+                        &unsafe { transmute_lifetime(&*r.borrow()) }.value
+                    )
+                )
+            }
+            Value::Datetime(..) => {
+                EntryRef::Datetime(
+                    DatetimeValue::new(
+                        &unsafe { transmute_lifetime(&*r.borrow()) }.value
+                    )
+                )
+            }
             Value::InlineArray(..) => {
                 let value_wrapper = unsafe { transmute_lifetime(&*r.borrow()) };                
                 EntryRef::Array(
@@ -274,20 +325,11 @@ impl ValueNode {
                 EntryRef::Table(
                     TableEntry {
                         data: Table::Inline(
-                            InlineTable::new(&value_wrapper)
+                            InlineTable::new(&value_wrapper.value)
                         )
                     }
                 )
             }
-            Value::Boolean(..) => {
-                let value_wrapper = unsafe { transmute_lifetime(&*r.borrow()) };                
-                EntryRef::Boolean(
-                    BoolValue::new(
-                        &unsafe { transmute_lifetime(&*r.borrow()) }.value
-                    )
-                )
-            }
-            _ => unimplemented!()
         }
     }
 }
@@ -331,10 +373,11 @@ impl Container {
     }
 
     pub fn to_entry(&self) -> EntryRef {
-        match self.kind {
-            ContainerKind::ArrayMember => panic!(),
-            ContainerKind::Table => unimplemented!()
-        }
+        EntryRef::Table(
+            TableEntry {
+                data: Table::Explicit(self)
+            }
+        )
     }
 }
 
@@ -345,7 +388,7 @@ impl super::ContainerData {
             .or_else(|| {
                 self.indirect
                     .get(key)
-                    .map_or(None, |child| child.get(key))
+                    .map_or(None, |c| Some(IndirectChild::as_cursor(c)))
             })
     }
 
@@ -400,7 +443,10 @@ impl IndirectChild {
 #[derive(Clone, Copy)]
 pub enum EntryRef<'a> {
     String(&'a StringValue),
+    Integer(&'a IntegerValue),
+    Float(&'a FloatValue),
     Boolean(&'a BoolValue),
+    Datetime(&'a DatetimeValue),
     Array(ArrayEntry<'a>),
     Table(TableEntry<'a>),
 }
@@ -409,7 +455,10 @@ impl<'a> EntryRef<'a> {
     pub fn is_child(self) -> bool {
         match self {
             EntryRef::String(..)
-            | EntryRef::Boolean(..)=> true,
+            | EntryRef::Integer(..)
+            | EntryRef::Float(..)
+            | EntryRef::Boolean(..)
+            | EntryRef::Datetime(..)=> true,
             EntryRef::Array(arr) => {
                 match arr.to_value() {
                     ArrayValue::Inline(..) => true,
@@ -468,6 +517,63 @@ impl StringValue {
         }
     }
 }
+
+define_view!(FloatValue, FormattedValue);
+impl_value_markup!(FloatValue);
+
+impl FloatValue {
+    pub fn get(&self) -> f64 {
+        match self.0.value {
+            Value::Float{ parsed, .. }  => parsed,
+            _ => unreachable!()
+        }
+    }
+
+    pub fn set(&mut self, f: f64) {
+        self.0.value = Value::Float { 
+            parsed: f,
+            raw: format!("{}", f)
+
+        };
+    }
+
+    pub fn raw(&self) -> &str {
+        match self.0.value {
+            Value::Float{ ref raw, .. } => &raw,
+            _ => unreachable!()
+        }
+    }
+}
+
+define_view!(IntegerValue, FormattedValue);
+impl_value_markup!(IntegerValue);
+
+impl IntegerValue {
+    pub fn get(&self) -> i64 {
+        match self.0.value {
+            Value::Integer{ parsed, .. }  => parsed,
+            _ => unreachable!()
+        }
+    }
+
+    pub fn set(&mut self, i: i64) {
+        self.0.value = Value::Integer { 
+            parsed: i,
+            raw: format!("{}", i)
+
+        };
+    }
+
+    pub fn raw(&self) -> &str {
+        match self.0.value {
+            Value::Integer{ ref raw, .. } => &raw,
+            _ => unreachable!()
+        }
+    }
+}
+
+define_view!(DatetimeValue, FormattedValue);
+impl_value_markup!(DatetimeValue);
 
 define_view!(InlineArray, FormattedValue);
 
@@ -610,7 +716,9 @@ impl<'a> ArrayEntry<'a> {
     pub fn get(self, idx: usize) -> EntryRef<'a> {
         match self.data {
             Array::Inline(data) => data.get(idx).to_entry(),
-            Array::Explicit(vec) => unimplemented!()
+            Array::Explicit(vec) => unsafe {
+                Container::new(&vec[idx]).to_entry()
+            }
         }
     }
 
@@ -619,11 +727,11 @@ impl<'a> ArrayEntry<'a> {
     }
 }
 
-define_view!(InlineTable, ValueNode);
+define_view!(InlineTable, FormattedValue);
 
 impl InlineTable {
     fn data(&self) -> &TableData {
-        match self.0.value.value {
+        match self.0.value {
             super::Value::InlineTable(ref table_data) => table_data,
             _ => unreachable!()
         }
@@ -647,18 +755,11 @@ impl InlineTable {
     }
 
     pub fn markup(&self) -> &ValueMarkup {
-        &self.0.value.markup
+        &self.0.markup
     }
 
     pub fn markup_mut(&mut self) -> &mut ValueMarkup {
-        &mut self.0.value.markup
-    }
-    pub fn key(&self) -> &KeyMarkup {
-        KeyMarkup::new(&self.0.key)
-    }
-
-    pub fn key_mut(&mut self) -> &mut KeyMarkup {
-        KeyMarkup::new_mut(&mut self.0.key)
+        &mut self.0.markup
     }
 
     pub fn get_comma_trivia(&self) -> &str {

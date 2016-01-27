@@ -1,8 +1,8 @@
 use std::fmt::{Display, Error, Formatter, Write};
 
 use super::{Document, KeyMarkup, StringValue, TableKeyMarkup, BoolValue};
-use super::{ValueRef, Container, DirectChild, InlineArray};
-use super::{ContainerKind, InlineTable};
+use super::{ValueRef, Container, DirectChild, InlineArray, FloatValue};
+use super::{ContainerKind, InlineTable, IntegerValue, DatetimeValue};
 
 fn fmt_join<'a, T, I>(f: &mut Formatter, values: I, sep: &str)
                       -> Result<(), Error> where T: Display, I:Iterator<Item=T>{
@@ -40,7 +40,10 @@ impl<'a> Display for ValueRef<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match *self {
             ValueRef::String(node) => node.fmt(f),
+            ValueRef::Integer(node) => node.fmt(f),
+            ValueRef::Float(node) => node.fmt(f),
             ValueRef::Boolean(node) => node.fmt(f),
+            ValueRef::Datetime(node) => node.fmt(f),
             ValueRef::Array(arr) => arr.fmt(f),
             ValueRef::Table(table) => table.fmt(f),
         }
@@ -57,6 +60,12 @@ impl Display for StringValue {
     }
 }
 
+impl Display for IntegerValue {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        unimplemented!()
+    }
+}
+
 impl Display for BoolValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         if self.get() {
@@ -64,6 +73,18 @@ impl Display for BoolValue {
         } else {
             write!(f, "false")
         }
+    }
+}
+
+impl Display for DatetimeValue {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        unimplemented!()
+    }
+}
+
+impl Display for FloatValue {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        unimplemented!()
     }
 }
 
@@ -78,7 +99,6 @@ impl Display for InlineTable {
         unimplemented!()
     }
 }
-
 
 impl<'a> Display for KeyMarkup {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
