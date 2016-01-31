@@ -87,7 +87,7 @@ impl Document {
 
     pub fn get(&self, key: &str) -> Option<EntryRef> {
         self.values
-            .get(key)
+            .get_entry(key)
             .or_else(|| {
                 self.container_index
                     .get(key)
@@ -244,10 +244,16 @@ impl<'a> ValueRef<'a> {
 }
 
 impl ValuesMap {
-    fn get(&self, key: &str) -> Option<EntryRef> {
+    fn get(&self, key: &str) -> Option<&DirectChild> {
         self.kvp_index
             .get(key)
-            .map(|val| { ValueNode::as_cursor(val) })
+            .map(|val| unsafe { DirectChild::new_rc(val) })
+    }
+
+    fn get_entry(&self, key: &str) -> Option<EntryRef> {
+        self.kvp_index
+            .get(key)
+            .map(|val| ValueNode::as_cursor(val))
     }
 
     fn get_at(&self, idx: usize) -> &Rc<RefCell<ValueNode>> {
@@ -258,7 +264,8 @@ impl ValuesMap {
         self.kvp_list.len()
     }
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
+    fn iter_entries<'a>(&'a self)
+                        -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
         let iter = self.kvp_index
                        .iter()
                        .map(direct_cursor);
@@ -384,7 +391,7 @@ impl Container {
 impl super::ContainerData {
     fn get(&self, key: &str) -> Option<EntryRef> {
         self.direct
-            .get(key)
+            .get_entry(key)
             .or_else(|| {
                 self.indirect
                     .get(key)
@@ -575,7 +582,21 @@ impl IntegerValue {
 define_view!(DatetimeValue, FormattedValue);
 impl_value_markup!(DatetimeValue);
 
+impl DatetimeValue {
+    pub fn get(&self) -> &str {
+        match self.0.value {
+            Value::Datetime(ref value) => &value,
+            _ => unreachable!()
+        }
+    }
+
+    pub fn set(&mut self, s: String) {
+        unimplemented!()
+    }
+}
+
 define_view!(InlineArray, FormattedValue);
+impl_value_markup!(InlineArray);
 
 impl InlineArray {
     fn data(&self) -> &InlineArrayData {
@@ -627,7 +648,7 @@ enum Table<'a> {
 impl<'a> TableEntry<'a> {
     pub fn get(self, key: &'a str) -> Option<EntryRef> {
         match self.data {
-            Table::Inline(data) => data.get(key),
+            Table::Inline(data) => data.get_entry(key),
             Table::Implicit(map) => implicit_table_get(map, key),
             Table::Explicit(data) => data.get(key),
         }
@@ -659,7 +680,7 @@ impl<'a> TableEntry<'a> {
 
     pub fn iter(self) -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
         match self.data {
-            Table::Inline(ref data) => data.iter(),
+            Table::Inline(ref data) => data.iter_entries(),
             Table::Implicit(ref map) => implicit_table_iter_logical(map),
             Table::Explicit(ref data) => data.iter_logical(),
         }
@@ -722,8 +743,18 @@ impl<'a> ArrayEntry<'a> {
         }
     }
 
-    pub fn iter(self) -> Box<Iterator<Item=(&'a str, EntryRef<'a>)> + 'a> {
-        unimplemented!()
+    pub fn iter(self) -> Box<Iterator<Item=EntryRef<'a>> + 'a> {
+        match self.data {
+            Array::Inline(data) => {
+                Box::new(data.iter().map(ValueRef::to_entry))
+            }
+            Array::Explicit(vec) => {
+                let iter = vec.iter()
+                               .map(|x| unsafe { Container::new(x) })
+                               .map(Container::to_entry);
+                Box::new(iter)
+            }
+        }
     }
 }
 
@@ -737,21 +768,25 @@ impl InlineTable {
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<EntryRef> {
+    pub fn get(&self, key: &str) -> Option<&DirectChild> {
         self.data().values.direct.get(key)
     }
 
-    pub fn get_at(&self, idx: usize) -> EntryRef {
-        ValueNode::as_cursor(self.data().values.direct.get_at(idx))
+    fn get_entry(&self, key: &str) -> Option<EntryRef> {
+        self.data().values.direct.get_entry(key)
     }
 
     pub fn len(&self) -> usize {
         self.data().values.direct.len()
     }
 
-    pub fn iter<'a>(&'a self)
+    pub fn iter(&self) -> DirectChildren {
+        self.data().values.direct.iter_children()
+    }
+
+    fn iter_entries<'a>(&'a self)
                     -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
-        self.data().values.direct.iter()
+        self.data().values.direct.iter_entries()
     }
 
     pub fn markup(&self) -> &ValueMarkup {

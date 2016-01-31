@@ -2,7 +2,7 @@ use std::fmt::{Display, Error, Formatter, Write};
 
 use super::{Document, KeyMarkup, StringValue, TableKeyMarkup, BoolValue};
 use super::{ValueRef, Container, DirectChild, InlineArray, FloatValue};
-use super::{ContainerKind, InlineTable, IntegerValue, DatetimeValue};
+use super::{ContainerKind, InlineTable, IntegerValue, DatetimeValue, ValueMarkup};
 
 fn fmt_join<'a, T, I>(f: &mut Formatter, values: I, sep: &str)
                       -> Result<(), Error> where T: Display, I:Iterator<Item=T>{
@@ -20,6 +20,16 @@ fn fmt_join<'a, T, I>(f: &mut Formatter, values: I, sep: &str)
         }
     }
     Ok(())
+}
+
+fn fmt_with_markup<T>(f: &mut Formatter, value: T, markup: &ValueMarkup)
+                       -> Result<(), Error> where T: Display {
+
+    write!(f,
+           "{}{}{}",
+           markup.get_leading_trivia(),
+           value,
+           markup.get_trailing_trivia())
 }
 
 impl Display for Document { 
@@ -52,51 +62,49 @@ impl<'a> Display for ValueRef<'a> {
 
 impl Display for StringValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f,
-               "{}{}{}",
-               self.markup().get_leading_trivia(),
-               self.raw(),
-               self.markup().get_trailing_trivia())
+        fmt_with_markup(f, self.raw(), self.markup())
     }
 }
 
 impl Display for IntegerValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        unimplemented!()
+        fmt_with_markup(f, self.raw(), self.markup())
     }
 }
 
 impl Display for BoolValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        if self.get() {
-            write!(f, "true")
-        } else {
-            write!(f, "false")
-        }
+        fmt_with_markup(f, self.get(), self.markup())
     }
 }
 
 impl Display for DatetimeValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        unimplemented!()
+        fmt_with_markup(f, self.get(), self.markup())
     }
 }
 
 impl Display for FloatValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        unimplemented!()
+        fmt_with_markup(f, self.raw(), self.markup())
     }
 }
 
 impl Display for InlineArray {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        unimplemented!()
+        try!(write!(f, "{}[", self.markup().get_leading_trivia()));
+        try!(fmt_join(f, self.iter(), ","));
+        try!(write!(f, "]{}", self.markup().get_trailing_trivia()));
+        Ok(())
     }
 }
 
 impl Display for InlineTable {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        unimplemented!()
+        try!(write!(f, "{}{{", self.markup().get_leading_trivia()));
+        try!(fmt_join(f, self.iter(), ","));
+        try!(write!(f, "}}{}", self.markup().get_trailing_trivia()));
+        Ok(())
     }
 }
 

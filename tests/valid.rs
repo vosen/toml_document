@@ -12,32 +12,49 @@ type LogicalValues<'a> = Box<Iterator<Item = (&'a str, EntryRef<'a>)> + 'a>;
 fn val_to_json((key, value): (&str, EntryRef)) -> (String, Json) {
   fn typed_json(s: &str, json: Json) -> Json {
     let mut map = BTreeMap::new();
-      map.insert(format!("{}", "type"), Json::String(format!("{}", s)));
-      map.insert(format!("{}", "value"), json);
-      Json::Object(map)
+        map.insert(format!("{}", "type"), Json::String(format!("{}", s)));
+        map.insert(format!("{}", "value"), json);
+        Json::Object(map)
   }
   match &value {
     &EntryRef::String(ref s) => {
-      let json_string = Json::String(s.get().to_string());
-      (key.to_string(), typed_json("string", json_string))
+        let json_string = Json::String(s.get().to_owned());
+        (key.to_owned(), typed_json("string", json_string))
     }
-    &EntryRef::Integer(..) => {
-      unimplemented!()
+    &EntryRef::Integer(i) => {
+        let json_string = Json::String(format!("{}", i.get()));
+        (key.to_owned(), typed_json("integer", json_string))
     }
-    &EntryRef::Float(..) => {
-      unimplemented!()
+    &EntryRef::Float(f) => {
+        let json_string = Json::String({
+            let s = format!("{:.15}", f.get());
+            let s = format!("{}", s.trim_right_matches('0'));
+            if s.ends_with(".") {format!("{}0", s)} else {s}
+        });
+        (key.to_owned(), typed_json("float", json_string))
     }
-    &EntryRef::Boolean(..) => {
-      unimplemented!()
+    &EntryRef::Boolean(b) => {
+        let json_string = Json::String(format!("{}", b.get()));
+        (key.to_owned(), typed_json("bool", json_string))
     }
-    &EntryRef::Datetime(..) => {
-      unimplemented!()
+    &EntryRef::Datetime(d) => {
+        let json_string = Json::String(d.get().to_owned());
+        (key.to_owned(), typed_json("datetime", json_string))
     }
-    &EntryRef::Array(..) => {
-      unimplemented!()
+    &EntryRef::Array(arr) => {
+        let is_table = match arr.iter().next() {
+        Some(EntryRef::Table(..)) => true,
+            _ => false,
+        };
+        let json = Json::Array(arr.iter().map(|e| val_to_json((&"", e)).1).collect::<Vec<_>>());
+        if is_table {
+            (key.to_owned(), json)
+        } else {
+            (key.to_owned(), typed_json("array", json))
+        }
     }
     &EntryRef::Table(ref table) => {
-      (key.to_string(), to_json(table.iter()))
+      (key.to_owned(), to_json(table.iter()))
     },
   }
 }
