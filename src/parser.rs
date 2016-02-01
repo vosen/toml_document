@@ -61,9 +61,9 @@ impl<'a> Parser<'a> {
     ///     foo = "bar"
     /// "#;
     ///
-    /// let mut parser = toml::Parser::new(toml);
+    /// let mut parser = toml_document::Parser::new(toml);
     /// match parser.parse() {
-    ///     Some(value) => println!("found toml: {:?}", value),
+    ///     Some(value) => println!("found toml: {:}", value),
     ///     None => {
     ///         println!("parse errors: {:?}", parser.errors);
     ///     }

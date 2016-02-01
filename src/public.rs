@@ -2,6 +2,8 @@ use std::cell::{RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::slice;
+use std::str::Chars;
+use std::iter::{Peekable};
 
 use super::{check_ws, eat_before_newline, eat_newline};
 use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
@@ -596,7 +598,16 @@ impl DatetimeValue {
 }
 
 define_view!(InlineArray, FormattedValue);
-impl_value_markup!(InlineArray);
+
+impl InlineArray {
+    pub fn markup(&self) -> &InlineArrayMarkup {
+        InlineArrayMarkup::new(&self.0)
+    }
+
+    pub fn markup_mut(&mut self) -> &mut InlineArrayMarkup {
+        InlineArrayMarkup::new_mut(&mut self.0)
+    }
+}
 
 impl InlineArray {
     fn data(&self) -> &InlineArrayData {
@@ -617,6 +628,33 @@ impl InlineArray {
     pub fn iter(&self) -> Values {
         Values {
             iter: self.data().values.iter()
+        }
+    }
+}
+
+define_view!(InlineArrayMarkup, FormattedValue);
+
+impl InlineArrayMarkup {
+    pub fn get_leading_trivia(&self) -> &str {
+        self.0.markup.get_leading_trivia()
+    }
+
+    pub fn set_leading_trivia(&mut self, s: String) {
+        self.0.markup.set_leading_trivia(s)
+    }
+
+    pub fn get_trailing_trivia(&self) -> &str {
+        self.0.markup.get_trailing_trivia()
+    }
+
+    pub fn set_trailing_trivia(&mut self, s: String) {
+        self.0.markup.set_trailing_trivia(s)
+    }
+
+    pub fn get_comma_trivia(&self) -> &str {
+        match self.0.value {
+            Value::InlineArray(ref data) => &data.comma_trail,
+            _ => unreachable!()
         }
     }
 }
@@ -906,5 +944,54 @@ impl KeyMarkup {
             Some(ref raw) => &*raw,
             None => &*self.0.escaped
         }
+    }
+}
+
+fn eat_eof(mut chars: Peekable<Chars>, error: &'static str) {
+    assert!(chars.next() == None, error);
+}
+
+impl ValueMarkup {
+    pub fn get_leading_trivia(&self) -> &str {
+        &self.lead
+    }
+
+    pub fn set_leading_trivia(&mut self, s: String) {
+        check_ws(&*s, MALFORMED_LEAD_MSG);
+        self.lead = s;
+    }
+
+    pub fn get_trailing_trivia(&self) -> &str {
+        &self.trail
+    }
+
+    pub fn set_trailing_trivia(&mut self, s: String) {
+        ValueMarkup::check_trailing_trivia(&*s);
+        self.trail = s;
+    }
+
+    fn check_trailing_trivia(s: &str) {
+        let chars = s.chars().peekable();
+        let chars = ValueMarkup::eat_ws(chars);
+        ValueMarkup::check_comment_or_newline(chars);
+    }
+
+    fn eat_ws(mut chars: Peekable<Chars>) -> Peekable<Chars> {
+        while chars.peek().is_some() {
+            match *chars.peek().unwrap() {
+                ' ' | '\t' => { },
+                _ => break
+            }
+            chars.next();
+        }
+        chars
+    }
+
+    fn check_comment_or_newline(mut chars: Peekable<Chars>) {
+        if chars.peek() == Some(&'#') {
+            chars = eat_before_newline(chars);
+        }
+        chars = eat_newline(chars, MALFORMED_TRAIL_MSG);
+        eat_eof(chars, MALFORMED_TRAIL_MSG);
     }
 }

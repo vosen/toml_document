@@ -64,10 +64,6 @@ fn eat_newline<'a>(mut chars: Peekable<Chars<'a>>,
     chars
 }
 
-fn eat_eof(mut chars: Peekable<Chars>, error: &'static str) {
-    assert!(chars.next() == None, error);
-}
-
 struct TraversalPosition<'a> {
     direct: Option<&'a mut ValuesMap>,
     indirect: &'a mut HashMap<String, IndirectChild>
@@ -210,61 +206,6 @@ pub struct ValueMarkup {
     lead: String,
     // auxiliary text after the value, up to and including the first newline
     trail: String
-}
-
-impl ValueMarkup {
-    pub fn new(lead: String, trail: String) -> ValueMarkup {
-        let mut value = ValueMarkup {
-            lead: String::new(),
-            trail: String::new(),
-        };
-        value.set_leading_trivia(lead);
-        value.set_trailing_trivia(trail);
-        value
-    }
-
-    pub fn get_leading_trivia(&self) -> &str {
-        &self.lead
-    }
-
-    pub fn set_leading_trivia(&mut self, s: String) {
-        check_ws(&*s, MALFORMED_LEAD_MSG);
-        self.lead = s;
-    }
-
-    pub fn get_trailing_trivia(&self) -> &str {
-        &self.trail
-    }
-
-    pub fn set_trailing_trivia(&mut self, s: String) {
-        ValueMarkup::check_trailing_trivia(&*s);
-        self.trail = s;
-    }
-
-    fn check_trailing_trivia(s: &str) {
-        let chars = s.chars().peekable();
-        let chars = ValueMarkup::eat_ws(chars);
-        ValueMarkup::check_comment_or_newline(chars);
-    }
-
-    fn eat_ws(mut chars: Peekable<Chars>) -> Peekable<Chars> {
-        while chars.peek().is_some() {
-            match *chars.peek().unwrap() {
-                ' ' | '\t' => { },
-                _ => break
-            }
-            chars.next();
-        }
-        chars
-    }
-
-    fn check_comment_or_newline(mut chars: Peekable<Chars>) {
-        if chars.peek() == Some(&'#') {
-            chars = eat_before_newline(chars);
-        }
-        chars = eat_newline(chars, MALFORMED_TRAIL_MSG);
-        eat_eof(chars, MALFORMED_TRAIL_MSG);
-    }
 }
 
 struct StringData {

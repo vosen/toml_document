@@ -94,6 +94,7 @@ impl Display for InlineArray {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         try!(write!(f, "{}[", self.markup().get_leading_trivia()));
         try!(fmt_join(f, self.iter(), ","));
+        try!(write!(f, "{}", self.markup().get_comma_trivia()));
         try!(write!(f, "]{}", self.markup().get_trailing_trivia()));
         Ok(())
     }
