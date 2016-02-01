@@ -1,24 +1,18 @@
-# toml-rs
+# toml_document
 
-[![Build Status](https://travis-ci.org/alexcrichton/toml-rs.svg?branch=master)](https://travis-ci.org/alexcrichton/toml-rs)
+[![Build Status](https://travis-ci.org/vosen/toml_document.svg?branch=master)](https://travis-ci.org/vosen/toml_document)
 
-[Documentation](http://alexcrichton.com/toml-rs)
+[Documentation](http://vosen.github.io/doc/toml_document)
 
-A [TOML][toml] decoder and encoder for Rust. This library is currently compliant with
-the v0.4.0 version of TOML. This library will also likely continue to stay up to
-date with the TOML specification as changes happen.
+This library provides a document-style interface to
+[TOML](https://github.com/toml-lang/toml) files. Document-style for this library
+means supporting edit operations that preserve markup of the file. E.g. you can
+edit a value without losing comments and formatting.
 
-[toml]: https://github.com/toml-lang/toml
-
-```toml
-# Cargo.toml
-[dependencies]
-toml = "0.1"
-```
 
 # License
 
-`toml-rs` is primarily distributed under the terms of both the MIT license and
+`toml_document` is primarily distributed under the terms of both the MIT license and
 the Apache License (Version 2.0), with portions covered by various BSD-like
 licenses.
 
