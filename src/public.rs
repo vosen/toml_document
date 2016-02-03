@@ -8,7 +8,7 @@ use std::iter::{Peekable};
 use super::{check_ws, eat_before_newline, eat_newline};
 use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
 
-use super::{TableData, Container, IndirectChild};
+use super::{TableData, Container, IndirectChild, PrivKeyMarkup, StringData};
 use super::{Value, ValueNode, ValueMarkup, FormattedKey, FormattedValue};
 use super::{ContainerKind, Document, ValuesMap, InlineArrayData};
 
@@ -55,6 +55,10 @@ macro_rules! impl_value_markup {
 }
 
 unsafe fn transmute_lifetime<'a, 'b, T>(x: &'a T) -> &'b T {
+    ::std::mem::transmute(x)
+}
+
+unsafe fn transmute_lifetime_mut<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
     ::std::mem::transmute(x)
 }
 
@@ -134,6 +138,22 @@ impl Document {
 
     pub fn get_trailing_trivia(&self) -> &str {
         &self.trail
+    }
+
+    pub fn insert_string(&mut self, idx: usize, key: String, value: String)
+                         -> &mut StringValue {
+        let value = Value::String(
+            StringData {
+                raw: StringValue::escape(&value),
+                escaped: value
+            }
+        );
+        let node = ValueNode::new(key, value);
+        self.values.insert_public(idx, node);
+        let nodeRef = unsafe {
+            transmute_lifetime_mut(&mut self.values.get_at_mut(idx))
+        };
+        StringValue::new_mut(&mut nodeRef.value)
     }
 }
 
@@ -282,6 +302,26 @@ impl ValuesMap {
 }
 
 impl ValueNode {
+    fn new(key: String, value: Value) -> ValueNode {
+        ValueNode {
+            key: FormattedKey {
+                escaped: key,
+                raw: None,
+                markup: PrivKeyMarkup {
+                    lead: String::new(),
+                    trail: " ".to_owned()
+                }
+            },
+            value: FormattedValue {
+                value: value,
+                markup: ValueMarkup {
+                    lead: " ".to_owned(),
+                    trail: "\n".to_owned()
+                }
+            }
+        }
+    }
+
     fn as_cursor<'a>(r: &'a RefCell<Self>) -> EntryRef<'a> {
         match r.borrow().value.value  {
             Value::String(..) => {
@@ -524,6 +564,28 @@ impl StringValue {
             Value::String(ref data) => &data.raw,
             _ => unreachable!()
         }
+    }
+
+    fn escape(value: &str) -> String {
+        let mut buff = String::with_capacity(value.len() + 2);
+        buff.push('"');
+        for c in value.chars() {
+            match c {
+                '\u{0008}' => buff.push_str("\\b"),
+                '\t' => buff.push_str("\\t"),
+                '\n' => buff.push_str("\\n"),
+                '\u{000C}' => buff.push_str("\\f"),
+                '\r' => buff.push_str("\\r"),
+                '\"' => buff.push_str("\\\""),
+                '\\' => buff.push_str("\\\\"),
+                c if c.is_control() => {
+                    buff.push_str(&format!("\\u{:04x}", c as u32));
+                }
+                c => buff.push(c)
+            }
+        }
+        buff.push('"');
+        buff
     }
 }
 
@@ -993,5 +1055,35 @@ impl ValueMarkup {
         }
         chars = eat_newline(chars, MALFORMED_TRAIL_MSG);
         eat_eof(chars, MALFORMED_TRAIL_MSG);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    mod document {
+        use Document;
+
+        #[test]
+        fn insert_string_simple() {
+            let mut doc = Document::new();
+            let val = doc.insert_string(0, "foo".to_owned(), "bar".to_owned());
+            assert_eq!(r#""bar""#, val.raw());
+        }
+
+        #[test]
+        fn insert_string_escaped() {
+            let mut doc = Document::new();
+            let val = doc.insert_string(0, "foo".to_owned(), "b\nr".to_owned());
+            assert_eq!(r#""b\nr""#, val.raw());
+        }
+
+        #[test]
+        fn insert_string_escape_control() {
+            let mut doc = Document::new();
+            let val = doc.insert_string(0,
+                                        "foo".to_owned(),
+                                        "\u{0016}".to_owned());
+            assert_eq!("\"\\u0016\"", val.raw());
+        }
     }
 }

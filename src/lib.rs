@@ -6,7 +6,7 @@
 // #![deny(dead_code)]
 // #![deny(unused_imports)]
 
-use std::cell::{RefCell};
+use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::collections::hash_map::{Entry};
 use std::rc::Rc;
@@ -166,6 +166,20 @@ impl ValuesMap {
             .value
             .markup
             .trail = s;
+    }
+
+    fn insert_public(&mut self, idx: usize, value: ValueNode) {
+        let key = value.key.escaped.clone();
+        let value = Rc::new(RefCell::new(value));
+        self.kvp_list.insert(idx, value.clone());
+        if let Some(..) = self.kvp_index.insert(key, value) {
+            let key = &self.kvp_list[idx].borrow().key.escaped;
+            panic!("Key {:} is already prsent.", key)
+        }
+    }
+
+    fn get_at_mut(&mut self, idx: usize) -> RefMut<ValueNode> {
+        self.kvp_list[idx].borrow_mut()
     }
 }
 
