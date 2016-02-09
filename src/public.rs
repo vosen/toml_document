@@ -140,6 +140,15 @@ impl Document {
         &self.trail
     }
 
+    fn insert_child(&mut self, idx: usize, key: String, value: Value)
+                    -> &mut ValueNode {
+        let node = ValueNode::new(key, value);
+        self.values.insert_public(idx, node);
+        unsafe {
+            transmute_lifetime_mut(&mut self.values.get_at_mut(idx))
+        }
+    }
+
     pub fn insert_string(&mut self, idx: usize, key: String, value: String)
                          -> &mut StringValue {
         let value = Value::String(
@@ -148,12 +157,60 @@ impl Document {
                 escaped: value
             }
         );
-        let node = ValueNode::new(key, value);
-        self.values.insert_public(idx, node);
-        let nodeRef = unsafe {
-            transmute_lifetime_mut(&mut self.values.get_at_mut(idx))
+        let node = self.insert_child(idx, key, value);
+        StringValue::new_mut(&mut node.value)
+    }
+
+    pub fn insert_integer(&mut self, idx: usize, key: String, value: i64)
+                          -> &mut IntegerValue {
+        let value = Value::Integer{
+            raw: value.to_string(),
+            parsed: value
         };
-        StringValue::new_mut(&mut nodeRef.value)
+        let node = self.insert_child(idx, key, value);
+        IntegerValue::new_mut(&mut node.value)
+    }
+
+    pub fn insert_float(&mut self, idx: usize, key: String, value: f64)
+                        -> &mut FloatValue {
+        let value = Value::Float{
+            raw: value.to_string(),
+            parsed: value
+        };
+        let node = self.insert_child(idx, key, value);
+        FloatValue::new_mut(&mut node.value)
+    }
+
+    pub fn insert_boolean(&mut self, idx: usize, key: String, value: bool)
+                          -> &mut BoolValue {
+        let value = Value::Boolean(value);
+        let node = self.insert_child(idx, key, value);
+        BoolValue::new_mut(&mut node.value)
+    }
+
+    pub fn insert_datetime(&mut self, idx: usize, key: String, value: String)
+                           -> &mut DatetimeValue {
+        // requires validation
+        unimplemented!()
+    }
+
+    pub fn insert_array(&mut self, idx: usize, key: String)
+                               -> &mut InlineArray {
+        let value = Value::InlineArray(
+            InlineArrayData {
+                values: Vec::new(),
+                comma_trail: "".to_owned()
+            }
+        );
+        let node = self.insert_child(idx, key, value);
+        InlineArray::new_mut(&mut node.value)
+    }
+
+    pub fn insert_inline_table(&mut self, idx: usize, key: String)
+                               -> &mut InlineTable {
+        let value = Value::new_table(ValuesMap::new(), "".to_owned());
+        let node = self.insert_child(idx, key, value);
+        InlineTable::new_mut(&mut node.value)
     }
 }
 
@@ -1066,24 +1123,111 @@ mod tests {
         #[test]
         fn insert_string_simple() {
             let mut doc = Document::new();
-            let val = doc.insert_string(0, "foo".to_owned(), "bar".to_owned());
-            assert_eq!(r#""bar""#, val.raw());
+            {
+                let val = doc.insert_string(0,
+                                            "foo".to_owned(),
+                                            "bar".to_owned());
+                assert_eq!(r#""bar""#, val.raw());
+            }
+            assert_eq!(1, doc.len());
         }
 
         #[test]
         fn insert_string_escaped() {
             let mut doc = Document::new();
-            let val = doc.insert_string(0, "foo".to_owned(), "b\nr".to_owned());
-            assert_eq!(r#""b\nr""#, val.raw());
+            {
+                let val = doc.insert_string(0,
+                                            "foo".to_owned(),
+                                            "b\nr".to_owned());
+                assert_eq!(r#""b\nr""#, val.raw());
+            }
+            assert_eq!(1, doc.len());
         }
 
         #[test]
         fn insert_string_escape_control() {
             let mut doc = Document::new();
-            let val = doc.insert_string(0,
-                                        "foo".to_owned(),
-                                        "\u{0016}".to_owned());
-            assert_eq!("\"\\u0016\"", val.raw());
+            {
+                let val = doc.insert_string(0,
+                                            "foo".to_owned(),
+                                            "\u{0016}".to_owned());
+                assert_eq!("\"\\u0016\"", val.raw());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_integer_zero() {
+            let mut doc = Document::new();
+            {
+                let val = doc.insert_integer(0, "foo".to_owned(), 0);
+                assert_eq!("0", val.raw());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_integer_min() {
+            let mut doc = Document::new();
+            {
+                let val = doc.insert_integer(0,
+                                             "foo".to_owned(),
+                                             -9223372036854775808);
+                assert_eq!("-9223372036854775808", val.raw());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_integer_max() {
+            let mut doc = Document::new();            
+            {
+                let val = doc.insert_integer(0,
+                                             "foo".to_owned(),
+                                             9223372036854775807);
+                assert_eq!("9223372036854775807", val.raw());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_float_neg() {
+            let mut doc = Document::new();
+            {
+                let val = doc.insert_float(0, "foo".to_owned(), -0.3);
+                assert_eq!("-0.3", val.raw());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_bool() {
+            let mut doc = Document::new();
+            {
+                let val = doc.insert_boolean(0, "foo".to_owned(), false);
+                assert_eq!(false, val.get());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_array() {
+            let mut doc = Document::new();
+            {
+                let val = doc.insert_array(0, "foo".to_owned());
+                assert_eq!(0, val.len());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_inline_table() {
+            let mut doc = Document::new();
+            {
+                let val = doc.insert_inline_table(0, "foo".to_owned());
+                assert_eq!(0, val.len());
+            }
+            assert_eq!(1, doc.len());
         }
     }
 }

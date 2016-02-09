@@ -174,7 +174,7 @@ impl ValuesMap {
         self.kvp_list.insert(idx, value.clone());
         if let Some(..) = self.kvp_index.insert(key, value) {
             let key = &self.kvp_list[idx].borrow().key.escaped;
-            panic!("Key {:} is already prsent.", key)
+            panic!("Key {:} is already present.", key)
         }
     }
 
