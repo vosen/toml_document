@@ -217,6 +217,26 @@ impl Document {
         let node = self.insert_child(idx, key, value);
         InlineTable::new_mut(&mut node.value)
     }
+
+    pub fn find_index<T:InternalNode>(&self, node: &T) -> Option<usize> {
+        let address = node.ptr();
+        for (idx, rc) in self.values.kvp_list.iter().enumerate() {
+            let inner : &ValueNode = &rc.borrow();
+            if inner as *const ValueNode as usize == address {
+                return Some(idx)
+            }
+            if &inner.value as *const FormattedValue as usize == address {
+                return Some(idx)
+            }
+        }
+        for (idx, rc) in self.container_list.iter().enumerate() {
+            let inner : &Container = &rc.borrow();
+            if inner as *const Container as usize == address {
+                return Some(idx + self.values.len())
+            }
+        }
+        None
+    }
 }
 
 pub struct DirectChildren<'a> {
@@ -1117,6 +1137,37 @@ impl ValueMarkup {
         }
         chars = eat_newline(chars, MALFORMED_TRAIL_MSG);
         eat_eof(chars, MALFORMED_TRAIL_MSG);
+    }
+}
+
+pub trait InternalNode: Sized {
+    fn ptr(&self) -> usize {
+        self as *const Self as usize
+    }
+}
+
+impl InternalNode for DirectChild {}
+
+impl InternalNode for StringValue {}
+impl InternalNode for IntegerValue {}
+impl InternalNode for FloatValue {}
+impl InternalNode for BoolValue {}
+impl InternalNode for DatetimeValue {}
+impl InternalNode for InlineArray {}
+impl InternalNode for InlineTable {}
+impl InternalNode for Container {}
+
+impl<'a> InternalNode for ValueRef<'a> {
+    fn ptr(&self) -> usize {
+        match *self {
+            ValueRef::String(x) => x.ptr(),
+            ValueRef::Integer(x) => x.ptr(),
+            ValueRef::Float(x) => x.ptr(),
+            ValueRef::Boolean(x) => x.ptr(),
+            ValueRef::Datetime(x) => x.ptr(),
+            ValueRef::Array(x) => x.ptr(),
+            ValueRef::Table(x) => x.ptr(),
+        }
     }
 }
 

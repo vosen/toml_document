@@ -81,6 +81,17 @@ fn run(toml: &str, json: &str) {
             json.pretty(),
             toml_json.pretty());
 
+    // check indexability of children
+    for (idx, child) in doc.iter_children().enumerate() {
+        assert_eq!(idx, doc.find_index(child).unwrap())
+    }
+
+    // check indexability of containers
+    for (idx, container) in doc.iter_containers().enumerate() {
+        assert_eq!(idx + doc.len_children(),
+                   doc.find_index(container).unwrap())
+    }
+
     // check round-trip equality
     assert_eq!(&doc.to_string(), toml);
 }
