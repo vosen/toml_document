@@ -684,6 +684,20 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        if Parser::_is_valid_datetime(&date) {
+            Some(DocValue::Datetime(date.clone()))
+        } else {
+            self.errors.push(ParserError {
+                lo: start,
+                hi: start + date.len(),
+                desc: format!("malformed date literal"),
+            });
+            None
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn _is_valid_datetime(date: &str) -> bool {
         let mut it = date.chars();
         let mut valid = true;
         valid = valid && it.next().map(is_digit).unwrap_or(false);
@@ -706,16 +720,7 @@ impl<'a> Parser<'a> {
         valid = valid && it.next().map(is_digit).unwrap_or(false);
         valid = valid && it.next().map(is_digit).unwrap_or(false);
         valid = valid && it.next().map(|c| c == 'Z').unwrap_or(false);
-        if valid {
-            Some(DocValue::Datetime(date.clone()))
-        } else {
-            self.errors.push(ParserError {
-                lo: start,
-                hi: start + date.len(),
-                desc: format!("malformed date literal"),
-            });
-            None
-        }
+        valid
     }
 
     fn array(&mut self, _start: usize) -> Option<DocValue> {

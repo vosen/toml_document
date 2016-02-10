@@ -7,6 +7,7 @@ use std::iter::{Peekable};
 
 use super::{check_ws, eat_before_newline, eat_newline};
 use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
+use Parser;
 
 use super::{TableData, Container, IndirectChild, PrivKeyMarkup, StringData};
 use super::{Value, ValueNode, ValueMarkup, FormattedKey, FormattedValue};
@@ -190,8 +191,12 @@ impl Document {
 
     pub fn insert_datetime(&mut self, idx: usize, key: String, value: String)
                            -> &mut DatetimeValue {
-        // requires validation
-        unimplemented!()
+        if !Parser::_is_valid_datetime(&value) {
+            panic!("Malformed date literal `{}` for key `{}`", value, key)
+        }
+        let value = Value::Datetime(value);
+        let node = self.insert_child(idx, key, value);
+        DatetimeValue::new_mut(&mut node.value)
     }
 
     pub fn insert_array(&mut self, idx: usize, key: String)
@@ -1226,6 +1231,18 @@ mod tests {
             {
                 let val = doc.insert_inline_table(0, "foo".to_owned());
                 assert_eq!(0, val.len());
+            }
+            assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_datetime() {
+            let mut doc = Document::new();
+            {
+                let val = doc.insert_datetime(0,
+                                              "foo".to_owned(),
+                                              "1979-05-27T07:32:00Z".to_owned());
+                assert_eq!("1979-05-27T07:32:00Z", val.get());
             }
             assert_eq!(1, doc.len());
         }
