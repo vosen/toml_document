@@ -64,6 +64,28 @@ fn eat_newline<'a>(mut chars: Peekable<Chars<'a>>,
     chars
 }
 
+fn escape_string(value: &str) -> String {
+    let mut buff = String::with_capacity(value.len() + 2);
+    buff.push('"');
+    for c in value.chars() {
+        match c {
+            '\u{0008}' => buff.push_str("\\b"),
+            '\t' => buff.push_str("\\t"),
+            '\n' => buff.push_str("\\n"),
+            '\u{000C}' => buff.push_str("\\f"),
+            '\r' => buff.push_str("\\r"),
+            '\"' => buff.push_str("\\\""),
+            '\\' => buff.push_str("\\\\"),
+            c if c.is_control() => {
+                buff.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => buff.push(c)
+        }
+    }
+    buff.push('"');
+    buff
+}
+
 struct TraversalPosition<'a> {
     direct: Option<&'a mut ValuesMap>,
     indirect: &'a mut HashMap<String, IndirectChild>
@@ -399,7 +421,8 @@ impl Container {
 // q="w"
 // In the document above, table container [a] contains single direct child
 // (x="y") and single indirect child (table container [a.b])
-struct ContainerData {
+#[doc(hidden)]
+pub struct ContainerData {
     direct: ValuesMap,
     indirect: HashMap<String, IndirectChild>
 }
@@ -426,7 +449,8 @@ pub enum ContainerKind {
     ArrayMember,
 }
 
-struct FormattedKey {
+#[doc(hidden)]
+pub struct FormattedKey {
     escaped: String,
     raw: Option<String>,
     markup: PrivKeyMarkup
@@ -445,6 +469,19 @@ impl FormattedKey {
             markup: PrivKeyMarkup {
                 lead: lead,
                 trail: trail,
+            }
+        }
+    }
+
+    fn new_escaped(key: String) -> FormattedKey {
+        let raw = escape_string(&key);
+        let raw = if raw.len() == key.len() + 2 { None } else { Some(raw) };
+        FormattedKey {
+            escaped: key,
+            raw: raw,
+            markup: PrivKeyMarkup {
+                lead: String::new(),
+                trail: String::new(),
             }
         }
     }

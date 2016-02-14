@@ -11,7 +11,7 @@ use Parser;
 
 use super::{TableData, Container, IndirectChild, PrivKeyMarkup, StringData};
 use super::{Value, ValueNode, ValueMarkup, FormattedKey, FormattedValue};
-use super::{ContainerKind, Document, ValuesMap, InlineArrayData};
+use super::{ContainerKind, Document, ValuesMap, InlineArrayData, ContainerData};
 
 macro_rules! define_view {
     ($name: ident, $inner: ty) => (
@@ -154,7 +154,7 @@ impl Document {
                          -> &mut StringValue {
         let value = Value::String(
             StringData {
-                raw: StringValue::escape(&value),
+                raw: super::escape_string(&value),
                 escaped: value
             }
         );
@@ -218,6 +218,41 @@ impl Document {
         InlineTable::new_mut(&mut node.value)
     }
 
+    pub fn insert_container<T>(&mut self,
+                               idx: usize,
+                               keys: T,
+                               kind: ContainerKind) -> &mut Container 
+                               where T:Iterator<Item=String> {
+        let keys: Vec<_> = keys.map(FormattedKey::new_escaped).collect();
+        if keys.len() == 0 {
+            panic!("Invalid parameter `keys`. Collection cannot be empty")
+        }
+        let real_idx = idx - self.values.len();
+        let maybe_error = match kind {
+            ContainerKind::Table => {
+                Parser::_insert_table(self,
+                                      real_idx,
+                                      keys,
+                                      ContainerData::new(),
+                                      "\n".to_owned())
+            }
+            ContainerKind::ArrayMember => {
+                Parser::_insert_array(self,
+                                      real_idx,
+                                      keys,
+                                      ContainerData::new(),
+                                      "\n".to_owned())
+            }
+        };
+        if let Some(err) = maybe_error {
+            panic!(err.desc)
+        }
+        unsafe {
+            let mut container_ref = self.container_list[real_idx].borrow_mut();
+            transmute_lifetime_mut(&mut container_ref)
+        }
+    }
+
     pub fn find_index<T:InternalNode>(&self, node: &T) -> Option<usize> {
         let address = node.ptr();
         for (idx, rc) in self.values.kvp_list.iter().enumerate() {
@@ -236,6 +271,10 @@ impl Document {
             }
         }
         None
+    }
+
+    pub fn delete(&mut self, idx: usize) {
+
     }
 }
 
@@ -646,28 +685,6 @@ impl StringValue {
             Value::String(ref data) => &data.raw,
             _ => unreachable!()
         }
-    }
-
-    fn escape(value: &str) -> String {
-        let mut buff = String::with_capacity(value.len() + 2);
-        buff.push('"');
-        for c in value.chars() {
-            match c {
-                '\u{0008}' => buff.push_str("\\b"),
-                '\t' => buff.push_str("\\t"),
-                '\n' => buff.push_str("\\n"),
-                '\u{000C}' => buff.push_str("\\f"),
-                '\r' => buff.push_str("\\r"),
-                '\"' => buff.push_str("\\\""),
-                '\\' => buff.push_str("\\\\"),
-                c if c.is_control() => {
-                    buff.push_str(&format!("\\u{:04x}", c as u32));
-                }
-                c => buff.push(c)
-            }
-        }
-        buff.push('"');
-        buff
     }
 }
 
@@ -1174,7 +1191,7 @@ impl<'a> InternalNode for ValueRef<'a> {
 #[cfg(test)]
 mod tests {
     mod document {
-        use Document;
+        use {Document, ContainerKind};
 
         #[test]
         fn insert_string_simple() {
@@ -1296,6 +1313,21 @@ mod tests {
                 assert_eq!("1979-05-27T07:32:00Z", val.get());
             }
             assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn insert_table() {
+            let mut doc = Document::new();
+            {
+                doc.insert_container(0,
+                                     vec!("foo".to_owned()).into_iter(),
+                                     ContainerKind::Table);
+                doc.insert_container(1,
+                                     vec!("bar".to_owned()).into_iter(),
+                                     ContainerKind::Table);
+            }
+            assert_eq!(2, doc.len());
+            assert_eq!("\n[foo]\n[bar]", format!("{}", doc));
         }
     }
 }
