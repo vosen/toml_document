@@ -1070,7 +1070,7 @@ fn is_digit(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {Document, Parser, EntryRef, BoolValue};
+    use {Document, Parser, EntryRef};
 
     macro_rules! bad {
         ($s:expr, $msg:expr) => ({

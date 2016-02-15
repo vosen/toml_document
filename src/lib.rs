@@ -143,15 +143,11 @@ impl Document {
 //         +
 //         |- kvp_list[1]
 //  x="y"  +
-//         +
-//         |- trail
-//         +
 struct ValuesMap {
     // key-value pairs stored in the order they appear in a document
     kvp_list: Vec<Rc<RefCell<ValueNode>>>,
     // Index for quick traversal.
     kvp_index: HashMap<String, Rc<RefCell<ValueNode>>>,
-    trail: String
 }
 
 impl ValuesMap {
@@ -159,7 +155,6 @@ impl ValuesMap {
         ValuesMap {
             kvp_list: Vec::new(),
             kvp_index: HashMap::new(),
-            trail: String::new()
         }
     }
 

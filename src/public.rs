@@ -143,10 +143,24 @@ impl Document {
 
     fn insert_child(&mut self, idx: usize, key: String, value: Value)
                     -> &mut ValueNode {
-        let node = ValueNode::new(key, value);
+        let mut node = ValueNode::new(key, value);
+        self.make_child_markup_nicer(idx, &mut node);
         self.values.insert_public(idx, node);
         unsafe {
             transmute_lifetime_mut(&mut self.values.get_at_mut(idx))
+        }
+    }
+
+    fn make_child_markup_nicer(&mut self, idx: usize, node: &mut ValueNode) {
+        if self.container_list.len() == 0 && idx == self.values.len() {
+            node.value.markup.trail = String::new();
+            if idx > 0 {
+                let mut prev_child = self.values.kvp_list[idx - 1].borrow_mut();
+                if !prev_child.value.markup.trail.ends_with("\n")
+                   && !prev_child.value.markup.trail.ends_with("\r\n") {
+                    prev_child.value.markup.trail = "\n".to_owned();
+                }
+            }
         }
     }
 
@@ -234,22 +248,31 @@ impl Document {
                                       real_idx,
                                       keys,
                                       ContainerData::new(),
-                                      "\n".to_owned())
+                                      String::new())
             }
             ContainerKind::ArrayMember => {
                 Parser::_insert_array(self,
                                       real_idx,
                                       keys,
                                       ContainerData::new(),
-                                      "\n".to_owned())
+                                      String::new())
             }
         };
+        self.make_container_markup_nicer(real_idx);
         if let Some(err) = maybe_error {
             panic!(err.desc)
         }
         unsafe {
             let mut container_ref = self.container_list[real_idx].borrow_mut();
             transmute_lifetime_mut(&mut container_ref)
+        }
+    }
+
+    fn make_container_markup_nicer(&mut self, insert_idx: usize) {
+        if insert_idx != 0 {
+            self.container_list[insert_idx].borrow_mut().lead = "\n".to_owned();
+        } else if self.container_list.len() > 1 {
+            self.container_list[insert_idx + 1].borrow_mut().lead = "\n".to_owned();
         }
     }
 
@@ -596,18 +619,6 @@ impl IndirectChild {
             }
         }
     }
-
-    fn get(&self, key: &str) -> Option<EntryRef> {
-        match self {
-            &IndirectChild::ImplicitTable(ref map) => {
-                map.get(key).map(IndirectChild::as_cursor)
-            }
-            &IndirectChild::ExplicitTable(ref container) => {
-                unsafe { transmute_lifetime(&container.borrow().data) }.get(key)
-            }
-            &IndirectChild::Array(..) => panic!()
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -891,7 +902,7 @@ impl<'a> TableEntry<'a> {
             Table::Implicit(..) => TableValue::Implicit,
             Table::Explicit(data) => TableValue::Explicit(data)
         }
-    }
+    } 
 }
 
 #[derive(Clone, Copy)]
@@ -1327,7 +1338,6 @@ mod tests {
                                      ContainerKind::Table);
             }
             assert_eq!(2, doc.len());
-            assert_eq!("\n[foo]\n[bar]", format!("{}", doc));
         }
     }
 }
