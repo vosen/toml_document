@@ -296,8 +296,152 @@ impl Document {
         None
     }
 
-    pub fn delete(&mut self, idx: usize) {
+    pub fn remove(&mut self, idx: usize) {
+        let child_count = self.values.kvp_list.len();
+        if idx < child_count {
+            let removed = self.values.kvp_list.remove(idx);
+            self.values.kvp_index.remove(&removed.borrow().key.escaped);
+        } else {
+            let real_idx = idx - self.values.kvp_list.len();
+            let remove = self.container_list.remove(real_idx);
+            Document::remove_container(&mut self.container_index,
+                                       &remove.borrow().keys,
+                                       &remove.borrow());
+        }
+    }
 
+    fn remove_container(map: &mut HashMap<String, IndirectChild>,
+                        keys: &[FormattedKey],
+                        cnt: &Container) -> bool {
+        fn index_of<T, F>(slice: &[T],
+                          f: F) 
+                          -> Option<usize> where F:Fn(&T) -> bool {
+            for (idx, cnt) in slice.iter().enumerate() {
+                if f(cnt) { return Some(idx); }
+            }
+            None
+        }
+        let removed = if keys.len() == 1 {
+            match *map.get_mut(&keys[0].escaped).unwrap() {
+                IndirectChild::ExplicitTable(ref found_cnt) => {
+                    &*found_cnt.borrow() as *const Container == cnt as *const Container
+                }
+                IndirectChild::Array(ref mut vec) => {
+                    let idx = index_of(vec, |c| &*c.borrow() as *const Container == cnt as *const Container);
+                    match idx {
+                        Some(idx) => { vec.remove(idx); true }
+                        None => false
+                    }
+                }
+                IndirectChild::ImplicitTable(..) => unreachable!()
+            }
+        } else {
+            let mut child = map.get_mut(&keys[0].escaped).unwrap();
+            match *child {
+                IndirectChild::ImplicitTable(ref mut map) => {
+                    Document::remove_container(map, &keys[1..], cnt)
+                }
+                IndirectChild::ExplicitTable(ref mut container) => {
+                    let mut container = container.borrow_mut();
+                    Document::remove_container(&mut container.data.indirect,
+                                               &keys[1..],
+                                                  cnt)
+                }
+                IndirectChild::Array(ref mut vec) => {
+                    vec.iter_mut().any(|inner| {
+                        let mut inner = inner.borrow_mut();
+                        Document::remove_container(&mut inner.data.indirect,
+                                                   &keys[1..],
+                                                   cnt)
+                    })
+                }
+            }
+        };
+        let needs_clenup = removed && match map[&keys[0].escaped] {
+            IndirectChild::ImplicitTable(ref map) => map.len() == 0,
+            IndirectChild::Array(ref vec) => vec.len() == 0,
+            IndirectChild::ExplicitTable(..) => false
+        };
+        if needs_clenup {
+            map.remove(&keys[0].escaped);
+        }
+        removed
+    }
+
+    pub fn remove_preserve_trivia(&mut self, idx: usize) {
+        let child_count = self.values.kvp_list.len();
+        if idx < child_count {
+            let removed = self.values.kvp_list.remove(idx);
+            self.values.kvp_index.remove(&removed.borrow().key.escaped);
+            let orphaned_trivia = Document::orphaned_trivia_value(removed);
+            if idx < child_count - 1 {
+                self.pass_trivia_to_value(idx, orphaned_trivia);
+            } else if self.container_list.len() > 0 {
+                self.pass_trivia_to_container(0, orphaned_trivia);
+            } else {
+                self.pass_trivia_to_document(orphaned_trivia);
+            }
+        } else {
+            let real_idx = idx - self.values.kvp_list.len();
+            let removed = self.container_list.remove(real_idx);
+            Document::remove_container(&mut self.container_index,
+                                       &removed.borrow().keys,
+                                       &removed.borrow());
+            let orphaned_trivia = Document::orphaned_trivia_container(removed);
+            let containers_count = self.container_list.len();
+            if containers_count > 0 && real_idx < containers_count {
+                self.pass_trivia_to_container(real_idx, orphaned_trivia);
+            } else  {
+                self.pass_trivia_to_document(orphaned_trivia);
+            }
+
+        }
+    }
+
+    fn orphaned_trivia_value(node: Rc<RefCell<ValueNode>>) -> String {
+        let node = node.borrow();
+        let mut buff = String::new();
+        buff.push_str(&node.key.markup.lead);
+        let old_trail = &node.value.markup.trail;
+        if old_trail.ends_with('\n') && old_trail.len() > 1
+           || old_trail.ends_with("\r\n") && old_trail.len() > 2 {
+            buff.push_str(old_trail);
+        }
+        buff
+    }
+
+    fn orphaned_trivia_container(container: Rc<RefCell<Container>>) -> String {
+        let container = container.borrow();
+        let mut buff = String::new();
+        buff.push_str(&container.lead);
+        let values_count = container.data.direct.kvp_list.len();
+        if values_count > 0 {
+            let last_value = &container.data.direct.kvp_list[values_count - 1];
+            let old_trail = &last_value.borrow().value.markup.trail;
+            buff.push_str(old_trail);
+        }
+        buff
+    }
+
+    fn pass_trivia_to_value(&mut self, 
+                            idx: usize,
+                            mut orphaned_trivia: String) {
+        let mut new_node = self.values.kvp_list[idx].borrow_mut();
+        orphaned_trivia.push_str(&new_node.key.markup.lead);
+        new_node.key.markup.lead = orphaned_trivia;
+    }
+
+    fn pass_trivia_to_container(&mut self, 
+                                idx: usize,
+                                mut orphaned_trivia: String) {
+        let mut first_container = self.container_list[idx].borrow_mut();
+        orphaned_trivia.push_str(&first_container.lead);
+        first_container.lead = orphaned_trivia;
+    }
+
+    fn pass_trivia_to_document(&mut self, mut orphaned_trivia: String) {
+        orphaned_trivia.push_str(&self.trail);
+        self.trail = orphaned_trivia;
     }
 }
 

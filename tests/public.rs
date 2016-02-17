@@ -108,3 +108,63 @@ fn _insert_out_of_order_container() -> Document {
     built.insert_container(0, vec!("foo".to_owned()).into_iter(), ContainerKind::Table);
     built
 }
+
+#[test]
+fn pass_trivia_to_value() {
+    let text = "\na=\"b\"#IMPORTANT\n c=10";
+    let mut doc = Parser::new(text).parse().unwrap();
+    doc.remove_preserve_trivia(0);
+    assert_eq!("\n#IMPORTANT\n ", doc.get_child(0).key().get_leading_trivia());
+}
+
+#[test]
+fn pass_trivia_to_container() {
+    let text = "\ta=\"b\"\t \n [foo]";
+    let mut doc = Parser::new(text).parse().unwrap();
+    doc.remove_preserve_trivia(0);
+    assert_eq!("\t\t \n ", doc.get_container(0).get_leading_trivia());
+}
+
+#[test]
+fn pass_trivia_to_document() {
+    let text = "\t\r\na=\"b\"\r\n";
+    let mut doc = Parser::new(text).parse().unwrap();
+    doc.remove_preserve_trivia(0);
+    assert_eq!("\t\r\n\r\n", doc.get_trailing_trivia());
+}
+
+#[test]
+fn remove_middle_container() {
+    let text = "[[a.b]]\n\t[[a.b.c]]\n[[a.b.c]]";
+    let mut doc = Parser::new(text).parse().unwrap();
+    assert_eq!(3, doc.len_containers());
+    doc.remove(1);
+    assert_eq!(2, doc.len_containers());
+    assert_eq!("\n", doc.get_container(1).get_leading_trivia());
+}
+
+#[test]
+fn remove_last_container() {
+    let text = "[[a.b]]\n\t[[a.b.c]]\n[[a.b.c]]";
+    let mut doc = Parser::new(text).parse().unwrap();
+    assert_eq!(3, doc.len_containers());
+    doc.remove(2);
+    assert_eq!(2, doc.len_containers());
+    assert_eq!("\n\t", doc.get_container(1).get_leading_trivia());
+}
+
+#[test]
+fn pass_trivia_to_container_from_container() {
+    let text = "\n\n\n[foo]\na=\"b\"\t\t\n[bar]";
+    let mut doc = Parser::new(text).parse().unwrap();
+    doc.remove_preserve_trivia(0);
+    assert_eq!("\n\n\n\t\t\n", doc.get_container(0).get_leading_trivia());
+}
+
+#[test]
+fn pass_trivia_to_document_container() {
+    let text = "\n\t   [foo]\na=\"b\"\n";
+    let mut doc = Parser::new(text).parse().unwrap();
+    doc.remove_preserve_trivia(0);
+    assert_eq!("\n\t   \n", doc.get_trailing_trivia());
+}
