@@ -29,7 +29,9 @@ fn assert_child_eq(c1: &DirectChild, c2: &DirectChild) {
 }
 
 fn assert_container_eq(c1: &Container, c2: &Container) {
-    for (k1, k2) in c1.keys().iter().zip(c2.keys().iter()) {
+    assert_eq!(c1.keys().get_leading_trivia(),
+               c2.keys().get_leading_trivia());
+    for (k1, k2) in c1.keys().markup().iter().zip(c2.keys().markup().iter()) {
         assert_eq!(k1.get_leading_trivia(),
                    k2.get_leading_trivia());
         assert_eq!(k1.get_trailing_trivia(),
@@ -37,11 +39,11 @@ fn assert_container_eq(c1: &Container, c2: &Container) {
         assert_eq!(k1.raw(),
                    k2.raw());
     }
+    assert_eq!(c1.keys().get_trailing_trivia(),
+               c2.keys().get_trailing_trivia());
     for (c1, c2) in c1.iter_children().zip(c2.iter_children()) {
         assert_child_eq(c1, c2);
     }
-    assert_eq!(c1.get_leading_trivia(),
-               c2.get_leading_trivia())
 }
 
 macro_rules! compare {
@@ -122,7 +124,7 @@ fn pass_trivia_to_container() {
     let text = "\ta=\"b\"\t \n [foo]";
     let mut doc = Parser::new(text).parse().unwrap();
     doc.remove_preserve_trivia(0);
-    assert_eq!("\t\t \n ", doc.get_container(0).get_leading_trivia());
+    assert_eq!("\t\t \n ", doc.get_container(0).keys().get_leading_trivia());
 }
 
 #[test]
@@ -140,7 +142,7 @@ fn remove_middle_container() {
     assert_eq!(3, doc.len_containers());
     doc.remove(1);
     assert_eq!(2, doc.len_containers());
-    assert_eq!("\n", doc.get_container(1).get_leading_trivia());
+    assert_eq!("\n", doc.get_container(1).keys().get_leading_trivia());
 }
 
 #[test]
@@ -150,7 +152,7 @@ fn remove_last_container() {
     assert_eq!(3, doc.len_containers());
     doc.remove(2);
     assert_eq!(2, doc.len_containers());
-    assert_eq!("\n\t", doc.get_container(1).get_leading_trivia());
+    assert_eq!("\n\t", doc.get_container(1).keys().get_leading_trivia());
 }
 
 #[test]
@@ -158,7 +160,7 @@ fn pass_trivia_to_container_from_container() {
     let text = "\n\n\n[foo]\na=\"b\"\t\t\n[bar]";
     let mut doc = Parser::new(text).parse().unwrap();
     doc.remove_preserve_trivia(0);
-    assert_eq!("\n\n\n\t\t\n", doc.get_container(0).get_leading_trivia());
+    assert_eq!("\n\n\n\t\t\n", doc.get_container(0).keys().get_leading_trivia());
 }
 
 #[test]

@@ -135,13 +135,13 @@ impl Display for Container {
             ContainerKind::ArrayMember => true,
             ContainerKind::Table => false
         };
-        try!(write!(f, "{}", self.get_leading_trivia()));
+        try!(write!(f, "{}", self.keys().get_leading_trivia()));
         if is_array {
             try!(write!(f, "[["));
         } else {
             try!(write!(f, "["));
         }
-        try!(fmt_join(f, self.keys().iter(), "."));
+        try!(fmt_join(f, self.keys().markup().iter(), "."));
         if is_array {
             try!(write!(f, "]]"));
         } else {

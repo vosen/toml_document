@@ -374,15 +374,14 @@ impl IndirectChild {
 }
 
 pub struct Container {
+    // Path to the table, including leading trivia 
+    // and trailing trivia up to a newline, eg:
+    //  \n                     +
+    //  \n                     |- keys
+    //  [   a   .   b   ]   \n +
+    keys: ContainerKeys,
     data: ContainerData,
-    // Path to the table, eg:
-    //  [   a   .   b   ]
-    //   +-----+ +-----+
-    //      |       |
-    //   keys[0] keys[1]
-    keys: Vec<FormattedKey>,
     kind: ContainerKind,
-    lead: String,
 }
 
 impl Container {
@@ -390,8 +389,7 @@ impl Container {
                      -> Container {
         Container { 
             data: data,
-            keys: ks,
-            lead: lead,
+            keys: ContainerKeys::new(lead, ks),
             kind: ContainerKind::ArrayMember,
         }
     }
@@ -400,9 +398,31 @@ impl Container {
                      -> Container {
         Container { 
             data: data,
-            keys: ks,
-            lead: lead,
+            keys: ContainerKeys::new(lead, ks),
             kind: ContainerKind::Table,
+        }
+    }
+}
+
+struct ContainerKeys {
+    // trivia before `self.vec`
+    lead: String,
+    // Path to the table, eg:
+    //  [   a   .   b   ]
+    //   +-----+ +-----+
+    //      |       |
+    //   vec[0]   vec[1]
+    vec: Vec<FormattedKey>,
+    // trivia up to and including the first newline after `self.vec`
+    trail: String,
+}
+
+impl ContainerKeys {
+    fn new(lead: String, ks: Vec<FormattedKey>) -> ContainerKeys {
+        ContainerKeys {
+            lead: lead,
+            vec: ks,
+            trail: String::new()
         }
     }
 }

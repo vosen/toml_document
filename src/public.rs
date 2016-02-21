@@ -270,9 +270,9 @@ impl Document {
 
     fn make_container_markup_nicer(&mut self, insert_idx: usize) {
         if insert_idx != 0 {
-            self.container_list[insert_idx].borrow_mut().lead = "\n".to_owned();
+            self.container_list[insert_idx].borrow_mut().keys.lead = "\n".to_owned();
         } else if self.container_list.len() > 1 {
-            self.container_list[insert_idx + 1].borrow_mut().lead = "\n".to_owned();
+            self.container_list[insert_idx + 1].borrow_mut().keys.lead = "\n".to_owned();
         }
     }
 
@@ -305,7 +305,7 @@ impl Document {
             let real_idx = idx - self.values.kvp_list.len();
             let remove = self.container_list.remove(real_idx);
             Document::remove_container(&mut self.container_index,
-                                       &remove.borrow().keys,
+                                       &remove.borrow().keys.vec,
                                        &remove.borrow());
         }
     }
@@ -385,7 +385,7 @@ impl Document {
             let real_idx = idx - self.values.kvp_list.len();
             let removed = self.container_list.remove(real_idx);
             Document::remove_container(&mut self.container_index,
-                                       &removed.borrow().keys,
+                                       &removed.borrow().keys.vec,
                                        &removed.borrow());
             let orphaned_trivia = Document::orphaned_trivia_container(removed);
             let containers_count = self.container_list.len();
@@ -413,7 +413,7 @@ impl Document {
     fn orphaned_trivia_container(container: Rc<RefCell<Container>>) -> String {
         let container = container.borrow();
         let mut buff = String::new();
-        buff.push_str(&container.lead);
+        buff.push_str(&container.keys.lead);
         let values_count = container.data.direct.kvp_list.len();
         if values_count > 0 {
             let last_value = &container.data.direct.kvp_list[values_count - 1];
@@ -435,8 +435,8 @@ impl Document {
                                 idx: usize,
                                 mut orphaned_trivia: String) {
         let mut first_container = self.container_list[idx].borrow_mut();
-        orphaned_trivia.push_str(&first_container.lead);
-        first_container.lead = orphaned_trivia;
+        orphaned_trivia.push_str(&first_container.keys.lead);
+        first_container.keys.lead = orphaned_trivia;
     }
 
     fn pass_trivia_to_document(&mut self, mut orphaned_trivia: String) {
@@ -701,12 +701,8 @@ impl Container {
         self.data.direct.iter_children()
     }
 
-    pub fn get_leading_trivia(&self) -> &str {
-        &self.lead
-    }
-
-    pub fn keys(&self) -> &[TableKeyMarkup] {
-        TableKeyMarkup::new_slice(&self.keys)
+    pub fn keys(&self) -> &ContainerKeysMarkup {
+        &ContainerKeysMarkup::new(&self)
     }
 
     pub fn to_entry(&self) -> EntryRef {
@@ -762,6 +758,21 @@ impl IndirectChild {
                 )
             }
         }
+    }
+}
+
+define_view!(ContainerKeysMarkup, Container);
+impl ContainerKeysMarkup {
+    pub fn get_leading_trivia(&self) -> &str {
+        &self.0.keys.lead
+    }
+
+    pub fn markup(&self) -> &[TableKeyMarkup] {
+        TableKeyMarkup::new_slice(&self.0.keys.vec)
+    }
+
+    pub fn get_trailing_trivia(&self) -> &str {
+        &self.0.keys.trail
     }
 }
 

@@ -166,7 +166,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn skip_aux(&mut self) {
+    fn skip_trivia(&mut self) {
         self.aux_range = Some(self.aux_range.unwrap_or_else(|| {
             let start = self.next_pos();
             loop {
@@ -179,9 +179,9 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    fn eat_aux(&mut self) -> String {
-        self.skip_aux();
-        self.take_aux()
+    fn eat_trivia(&mut self) -> String {
+        self.skip_trivia();
+        self.take_trivia()
     }
 
     fn eat_to_newline(&mut self) -> String {
@@ -198,7 +198,7 @@ impl<'a> Parser<'a> {
         self.input[start..self.next_pos()].to_string()
     }
 
-    fn take_aux(&mut self) -> String {
+    fn take_trivia(&mut self) -> String {
         self.aux_range
             .take()
             .map(|(start, end)| &self.input[start..end])
@@ -210,9 +210,9 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Option<Document> {
         let mut ret = Document::new();
         while self.peek(0).is_some() {
-            self.skip_aux();
+            self.skip_trivia();
             if self.eat('[') {
-                let container_aux = self.take_aux();
+                let container_aux = self.take_trivia();
                 let array = self.eat('[');
                 self.next_pos();
 
@@ -234,22 +234,25 @@ impl<'a> Parser<'a> {
                 // Build the section table
                 let mut container = ContainerData::new();
                 if !self.values(&mut container.direct) { return None };
-                let container_len = ret.container_list.len();
+                let cnt_len = ret.container_list.len();
                 let maybe_error = if array {
                     Parser::_insert_array(&mut ret,
-                                          container_len,
+                                          cnt_len,
                                           keys,
                                           container,
                                           container_aux)
                 } else {
                     Parser::_insert_table(&mut ret,
-                                          container_len,
+                                          cnt_len,
                                           keys,
                                           container,
                                           container_aux)
                 };
                 if let Some(error) = maybe_error {
                     self.errors.push(error);
+                } else {
+                    let trail = self.eat_to_newline();
+                    ret.container_list[cnt_len].borrow_mut().keys.trail = trail;
                 }
             } else {
                 if !self.values(&mut ret.values) { return None }
@@ -258,7 +261,7 @@ impl<'a> Parser<'a> {
         if self.errors.len() > 0 {
             None
         } else {
-            ret.trail = self.take_aux();
+            ret.trail = self.take_trivia();
             Some(ret)
         }
     }
@@ -303,7 +306,7 @@ impl<'a> Parser<'a> {
     // Returns true in case of success and false in case of error.
     fn values(&mut self, into: &mut ValuesMap) -> bool {
         loop {
-            self.skip_aux();
+            self.skip_trivia();
             match self.peek(0) {
                 Some((_, '[')) => return true,
                 Some(..) => {}
@@ -314,7 +317,7 @@ impl<'a> Parser<'a> {
                 Some(s) => s,
                 None => return false
             };
-            let key = FormattedKey::new(self.take_aux(), key, self.eat_ws());
+            let key = FormattedKey::new(self.take_trivia(), key, self.eat_ws());
             if !self.expect('=') { return false }
             let value = match self.value() {
                 Some(value) => value,
@@ -741,9 +744,9 @@ impl<'a> Parser<'a> {
         let mut type_str = None;
         loop {
             // Break out early if we see the closing bracket
-            self.skip_aux();
+            self.skip_trivia();
             if self.eat(']') {
-                let mut trail_aux = self.take_aux();
+                let mut trail_aux = self.take_trivia();
                 if ret.len() > 0 {
                     trail_aux = format!(",{}", trail_aux);
                 }
@@ -758,7 +761,7 @@ impl<'a> Parser<'a> {
             // Attempt to parse a value, triggering an error if it's the wrong
             // type.
             let start = self.next_pos();
-            let lead = self.take_aux();
+            let lead = self.take_trivia();
             let mut value = try!(self.value());
             let end = self.next_pos();
             let expected = type_str.unwrap_or(value.value.type_str());
@@ -772,7 +775,7 @@ impl<'a> Parser<'a> {
             } else {
                 type_str = Some(expected);
                 value.markup.lead = lead;
-                value.markup.trail = self.eat_aux();
+                value.markup.trail = self.eat_trivia();
                 ret.push(value);
             }
 
@@ -930,7 +933,7 @@ impl<'a> Parser<'a> {
                 lo: 0,
                 hi: 0,
                 desc: format!("redefinition of table `{}`",
-                              &*keys.last().as_ref().unwrap().escaped),
+                              &*keys.vec.last().as_ref().unwrap().escaped),
             });
         }
     }
@@ -1003,7 +1006,7 @@ impl<'a> Parser<'a> {
                     desc:
                         format!(
                             "key `{}` was previously not an array",
-                            Parser::last_key_text(&keys)),
+                            Parser::last_key_text(&keys.vec)),
                 });
             }
             IndirectChild::Array(ref mut vec) => {
