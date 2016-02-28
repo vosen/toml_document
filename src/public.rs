@@ -141,95 +141,69 @@ impl Document {
         &self.trail
     }
 
-    fn insert_child(&mut self, idx: usize, key: String, value: Value)
-                    -> &mut ValueNode {
-        let mut node = ValueNode::new(key, value);
-        self.make_child_markup_nicer(idx, &mut node);
-        self.values.insert_public(idx, node);
-        unsafe {
-            transmute_lifetime_mut(&mut self.values.get_at_mut(idx))
-        }
+    fn is_child_at_end(&self, idx: usize) -> bool {
+        self.container_list.len() == 0 && idx == self.values.len() - 1
     }
 
-    fn make_child_markup_nicer(&mut self, idx: usize, node: &mut ValueNode) {
-        if self.container_list.len() == 0 && idx == self.values.len() {
-            node.value.markup.trail = String::new();
-            if idx > 0 {
-                let mut prev_child = self.values.kvp_list[idx - 1].borrow_mut();
-                if !prev_child.value.markup.trail.ends_with("\n")
-                   && !prev_child.value.markup.trail.ends_with("\r\n") {
-                    prev_child.value.markup.trail = "\n".to_owned();
-                }
+    fn adjust_trivia(&mut self, idx: usize) {
+        if !self.is_child_at_end(idx) {
+            self.values.get_at_mut(idx).value.markup.trail = "\n".to_owned();
+        } else if idx > 0 {
+            let mut prev_child = self.values.get_at_mut(idx - 1);
+            if !prev_child.value.markup.trail.ends_with("\n")
+               && !prev_child.value.markup.trail.ends_with("\r\n") {
+                prev_child.value.markup.trail.push_str("\n");
             }
         }
     }
 
     pub fn insert_string(&mut self, idx: usize, key: String, value: String)
                          -> &mut StringValue {
-        let value = Value::String(
-            StringData {
-                raw: super::escape_string(&value),
-                escaped: value
-            }
-        );
-        let node = self.insert_child(idx, key, value);
-        StringValue::new_mut(&mut node.value)
+        self.values.insert_string(idx, key, value);
+        self.adjust_trivia(idx);
+        self.values.get_string(idx)
     }
 
     pub fn insert_integer(&mut self, idx: usize, key: String, value: i64)
                           -> &mut IntegerValue {
-        let value = Value::Integer{
-            raw: value.to_string(),
-            parsed: value
-        };
-        let node = self.insert_child(idx, key, value);
-        IntegerValue::new_mut(&mut node.value)
+        self.values.insert_integer(idx, key, value);
+        self.adjust_trivia(idx);
+        self.values.get_integer(idx)
     }
 
     pub fn insert_float(&mut self, idx: usize, key: String, value: f64)
                         -> &mut FloatValue {
-        let value = Value::Float{
-            raw: value.to_string(),
-            parsed: value
-        };
-        let node = self.insert_child(idx, key, value);
-        FloatValue::new_mut(&mut node.value)
+        self.values.insert_float(idx, key, value);
+        self.adjust_trivia(idx);
+        self.values.get_float(idx)
     }
 
     pub fn insert_boolean(&mut self, idx: usize, key: String, value: bool)
                           -> &mut BoolValue {
-        let value = Value::Boolean(value);
-        let node = self.insert_child(idx, key, value);
-        BoolValue::new_mut(&mut node.value)
+        self.values.insert_boolean(idx, key, value);
+        self.adjust_trivia(idx);
+        self.values.get_boolean(idx)
     }
 
     pub fn insert_datetime(&mut self, idx: usize, key: String, value: String)
                            -> &mut DatetimeValue {
-        if !Parser::_is_valid_datetime(&value) {
-            panic!("Malformed date literal `{}` for key `{}`", value, key)
-        }
-        let value = Value::Datetime(value);
-        let node = self.insert_child(idx, key, value);
-        DatetimeValue::new_mut(&mut node.value)
+        self.values.insert_datetime(idx, key, value);
+        self.adjust_trivia(idx);
+        self.values.get_datetime(idx)
     }
 
     pub fn insert_array(&mut self, idx: usize, key: String)
                                -> &mut InlineArray {
-        let value = Value::InlineArray(
-            InlineArrayData {
-                values: Vec::new(),
-                comma_trail: "".to_owned()
-            }
-        );
-        let node = self.insert_child(idx, key, value);
-        InlineArray::new_mut(&mut node.value)
+        self.values.insert_array(idx, key);
+        self.adjust_trivia(idx);
+        self.values.get_array(idx)
     }
 
     pub fn insert_inline_table(&mut self, idx: usize, key: String)
                                -> &mut InlineTable {
-        let value = Value::new_table(ValuesMap::new(), "".to_owned());
-        let node = self.insert_child(idx, key, value);
-        InlineTable::new_mut(&mut node.value)
+        self.values.insert_inline_table(idx, key);
+        self.adjust_trivia(idx);
+        self.values.get_inline_table(idx)
     }
 
     pub fn insert_container<T>(&mut self,
@@ -587,6 +561,140 @@ impl ValuesMap {
             iter: Some(self.kvp_list.iter())
         }
     }
+
+    fn insert_child(&mut self, idx: usize, key: String, value: Value) {
+        let mut node = ValueNode::new(key.clone(), value);
+        let node = Rc::new(RefCell::new(node));
+        self.kvp_list.insert(idx, node.clone());
+        if let Some(..) = self.kvp_index.insert(key, node) {
+            let key = &self.kvp_list[idx].borrow().key.escaped;
+            panic!("Key `{:}` is already present", key)
+        }
+    }
+
+    fn insert_string(&mut self, idx: usize, key: String, value: String) {
+        let value = Value::String(
+            StringData {
+                raw: super::escape_string(&value),
+                escaped: value
+            }
+        );
+        self.insert_child(idx, key, value);
+    }
+
+    fn get_string(&mut self, idx: usize) -> &mut StringValue {
+        unsafe {
+            StringValue::new_mut(
+                transmute_lifetime_mut(
+                    &mut self.get_at_mut(idx).value
+                )
+            )
+        }
+    }
+
+    fn insert_integer(&mut self, idx: usize, key: String, value: i64) {
+        let value = Value::Integer{
+            raw: value.to_string(),
+            parsed: value
+        };
+        self.insert_child(idx, key, value);
+    }
+
+    fn get_integer(&mut self, idx: usize) -> &mut IntegerValue {
+        unsafe {
+            IntegerValue::new_mut(
+                transmute_lifetime_mut(
+                    &mut self.get_at_mut(idx).value
+                )
+            )
+        }
+    }
+
+    fn insert_float(&mut self, idx: usize, key: String, value: f64) {
+        let value = Value::Float{
+            raw: value.to_string(),
+            parsed: value
+        };
+        self.insert_child(idx, key, value);
+    }
+
+    fn get_float(&mut self, idx: usize) -> &mut FloatValue {
+        unsafe {
+            FloatValue::new_mut(
+                transmute_lifetime_mut(
+                    &mut self.get_at_mut(idx).value
+                )
+            )
+        }
+    }
+
+    fn insert_boolean(&mut self, idx: usize, key: String, value: bool) {
+        let value = Value::Boolean(value);
+        self.insert_child(idx, key, value);
+    }
+
+    fn get_boolean(&mut self, idx: usize) -> &mut BoolValue {
+        unsafe {
+            BoolValue::new_mut(
+                transmute_lifetime_mut(
+                    &mut self.get_at_mut(idx).value
+                )
+            )
+        }
+    }
+
+    fn insert_datetime(&mut self, idx: usize, key: String, value: String) {
+        if !Parser::_is_valid_datetime(&value) {
+            panic!("Malformed date literal `{}` for key `{}`", value, key)
+        }
+        let value = Value::Datetime(value);
+        self.insert_child(idx, key, value);
+    }
+
+    fn get_datetime(&mut self, idx: usize) -> &mut DatetimeValue {
+        unsafe {
+            DatetimeValue::new_mut(
+                transmute_lifetime_mut(
+                    &mut self.get_at_mut(idx).value
+                )
+            )
+        }
+    }
+
+    fn insert_array(&mut self, idx: usize, key: String) {
+        let value = Value::InlineArray(
+            InlineArrayData {
+                values: Vec::new(),
+                comma_trail: "".to_owned()
+            }
+        );
+        self.insert_child(idx, key, value);
+    }
+
+    fn get_array(&mut self, idx: usize) -> &mut InlineArray {
+        unsafe {
+            InlineArray::new_mut(
+                transmute_lifetime_mut(
+                    &mut self.get_at_mut(idx).value
+                )
+            )
+        }
+    }
+
+    fn insert_inline_table(&mut self, idx: usize, key: String) {
+        let value = Value::new_table(ValuesMap::new(), "".to_owned());
+        self.insert_child(idx, key, value);
+    }
+
+    fn get_inline_table(&mut self, idx: usize) -> &mut InlineTable {
+        unsafe {
+            InlineTable::new_mut(
+                transmute_lifetime_mut(
+                    &mut self.get_at_mut(idx).value
+                )
+            )
+        }
+    }
 }
 
 impl ValueNode {
@@ -604,7 +712,7 @@ impl ValueNode {
                 value: value,
                 markup: ValueMarkup {
                     lead: " ".to_owned(),
-                    trail: "\n".to_owned()
+                    trail: String::new()
                 }
             }
         }
@@ -1133,6 +1241,13 @@ impl InlineTable {
         }
     }
 
+    fn data_mut(&mut self) -> &mut TableData {
+        match self.0.value {
+            super::Value::InlineTable(ref mut table_data) => table_data,
+            _ => unreachable!()
+        }
+    }
+
     pub fn get(&self, key: &str) -> Option<&DirectChild> {
         self.data().values.direct.get(key)
     }
@@ -1170,6 +1285,72 @@ impl InlineTable {
         TableEntry {
             data: Table::Inline(self)
         }
+    }
+
+    fn adjust_trivia(&mut self, idx: usize) {
+        let len = self.len();
+        { // borrowck workaround
+            let mut inserted = self.data_mut().values.direct.get_at_mut(idx);
+            inserted.key.markup.lead = " ".to_owned();
+            if idx == len - 1 {
+                inserted.value.markup.trail = " ".to_owned();
+            }
+        }
+        if idx > 0 {
+            let mut prev = self.data_mut().values.direct.get_at_mut(idx - 1);
+            if prev.value.markup.trail == " " {
+                prev.value.markup.trail = String::new()
+            }
+        }
+    }
+
+    pub fn insert_string(&mut self, idx: usize, key: String, value: String)
+                         -> &mut StringValue {
+        self.data_mut().values.direct.insert_string(idx, key, value);
+        self.adjust_trivia(idx);
+        self.data_mut().values.direct.get_string(idx)
+    }
+
+    pub fn insert_integer(&mut self, idx: usize, key: String, value: i64)
+                          -> &mut IntegerValue {
+        self.data_mut().values.direct.insert_integer(idx, key, value);
+        self.adjust_trivia(idx);
+        self.data_mut().values.direct.get_integer(idx)
+    }
+
+    pub fn insert_float(&mut self, idx: usize, key: String, value: f64)
+                          -> &mut FloatValue {
+        self.data_mut().values.direct.insert_float(idx, key, value);
+        self.adjust_trivia(idx);
+        self.data_mut().values.direct.get_float(idx)
+    }
+
+    pub fn insert_boolean(&mut self, idx: usize, key: String, value: bool)
+                          -> &mut BoolValue {
+        self.data_mut().values.direct.insert_boolean(idx, key, value);
+        self.adjust_trivia(idx);
+        self.data_mut().values.direct.get_boolean(idx)
+    }
+
+    pub fn insert_datetime(&mut self, idx: usize, key: String, value: String)
+                           -> &mut DatetimeValue {
+        self.data_mut().values.direct.insert_datetime(idx, key, value);
+        self.adjust_trivia(idx);
+        self.data_mut().values.direct.get_datetime(idx)
+    }
+
+    pub fn insert_array(&mut self, idx: usize, key: String)
+                          -> &mut InlineArray {
+        self.data_mut().values.direct.insert_array(idx, key);
+        self.adjust_trivia(idx);
+        self.data_mut().values.direct.get_array(idx)
+    }
+
+    pub fn insert_inline_table(&mut self, idx: usize, key: String)
+                          -> &mut InlineTable {
+        self.data_mut().values.direct.insert_inline_table(idx, key);
+        self.adjust_trivia(idx);
+        self.data_mut().values.direct.get_inline_table(idx)
     }
 }
 
