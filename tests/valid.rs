@@ -83,13 +83,13 @@ fn run(toml: &str, json: &str) {
 
     // check indexability of children
     for (idx, child) in doc.iter_children().enumerate() {
-        assert_eq!(idx, doc.find_index(child).unwrap())
+        assert_eq!(idx, doc.find(child).unwrap())
     }
 
     // check indexability of containers
     for (idx, container) in doc.iter_containers().enumerate() {
         assert_eq!(idx + doc.len_children(),
-                   doc.find_index(container).unwrap())
+                   doc.find(container).unwrap())
     }
 
     // check round-trip equality

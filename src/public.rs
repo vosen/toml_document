@@ -157,61 +157,77 @@ impl Document {
         }
     }
 
-    pub fn insert_string(&mut self, idx: usize, key: String, value: String)
+    pub fn insert_string<S:Into<String>>(&mut self, idx: usize, key: S, val: S)
                          -> &mut StringValue {
-        self.values.insert_string(idx, key, value);
+        self.values.insert_string(idx, key.into(), val.into());
         self.adjust_trivia(idx);
         self.values.get_string(idx)
     }
 
-    pub fn insert_integer(&mut self, idx: usize, key: String, value: i64)
-                          -> &mut IntegerValue {
-        self.values.insert_integer(idx, key, value);
+    pub fn insert_integer<S:Into<String>>(&mut self,
+                                          idx: usize,
+                                          key: S,
+                                          value: i64)
+                                          -> &mut IntegerValue {
+        self.values.insert_integer(idx, key.into(), value);
         self.adjust_trivia(idx);
         self.values.get_integer(idx)
     }
 
-    pub fn insert_float(&mut self, idx: usize, key: String, value: f64)
-                        -> &mut FloatValue {
-        self.values.insert_float(idx, key, value);
+    pub fn insert_float<S:Into<String>>(&mut self,
+                                        idx: usize,
+                                        key: S,
+                                        value: f64)
+                                        -> &mut FloatValue {
+        self.values.insert_float(idx, key.into(), value);
         self.adjust_trivia(idx);
         self.values.get_float(idx)
     }
 
-    pub fn insert_boolean(&mut self, idx: usize, key: String, value: bool)
-                          -> &mut BoolValue {
-        self.values.insert_boolean(idx, key, value);
+    pub fn insert_boolean<S:Into<String>>(&mut self,
+                                          idx: usize,
+                                          key: S,
+                                          value: bool)
+                                          -> &mut BoolValue {
+        self.values.insert_boolean(idx, key.into(), value);
         self.adjust_trivia(idx);
         self.values.get_boolean(idx)
     }
 
-    pub fn insert_datetime(&mut self, idx: usize, key: String, value: String)
-                           -> &mut DatetimeValue {
-        self.values.insert_datetime(idx, key, value);
+    pub fn insert_datetime<S:Into<String>>(&mut self,
+                                           idx: usize,
+                                           key: S, value: S)
+                                           -> &mut DatetimeValue {
+        self.values.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         self.values.get_datetime(idx)
     }
 
-    pub fn insert_array(&mut self, idx: usize, key: String)
-                               -> &mut InlineArray {
-        self.values.insert_array(idx, key);
+    pub fn insert_array<S:Into<String>>(&mut self,
+                                        idx: usize,
+                                        key: S)
+                                        -> &mut InlineArray {
+        self.values.insert_array(idx, key.into());
         self.adjust_trivia(idx);
         self.values.get_array(idx)
     }
 
-    pub fn insert_inline_table(&mut self, idx: usize, key: String)
-                               -> &mut InlineTable {
-        self.values.insert_inline_table(idx, key);
+    pub fn insert_inline_table<S:Into<String>>(&mut self,
+                                               idx: usize,
+                                               key: S)
+                                               -> &mut InlineTable {
+        self.values.insert_inline_table(idx, key.into());
         self.adjust_trivia(idx);
         self.values.get_inline_table(idx)
     }
 
-    pub fn insert_container<T>(&mut self,
-                               idx: usize,
-                               keys: T,
-                               kind: ContainerKind) -> &mut Container 
-                               where T:Iterator<Item=String> {
-        let keys: Vec<_> = keys.map(FormattedKey::new_escaped).collect();
+    pub fn insert_container<K, S>(&mut self,
+                                  idx: usize,
+                                  keys: K,
+                                  kind: ContainerKind) -> &mut Container 
+                                  where K:Iterator<Item=S>, S:Into<String> {
+        let keys: Vec<_> = keys.map(|x| FormattedKey::new_escaped(x.into()))
+                               .collect();
         if keys.len() == 0 {
             panic!("Invalid parameter `keys`. Collection cannot be empty")
         }
@@ -250,16 +266,10 @@ impl Document {
         }
     }
 
-    pub fn find_index<T:InternalNode>(&self, node: &T) -> Option<usize> {
+    pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
         let address = node.ptr();
-        for (idx, rc) in self.values.kvp_list.iter().enumerate() {
-            let inner : &ValueNode = &rc.borrow();
-            if inner as *const ValueNode as usize == address {
-                return Some(idx)
-            }
-            if &inner.value as *const FormattedValue as usize == address {
-                return Some(idx)
-            }
+        if let Some(idx) = self.values.find(address) {
+            return Some(idx);
         }
         for (idx, rc) in self.container_list.iter().enumerate() {
             let inner : &Container = &rc.borrow();
@@ -273,8 +283,7 @@ impl Document {
     pub fn remove(&mut self, idx: usize) {
         let child_count = self.values.kvp_list.len();
         if idx < child_count {
-            let removed = self.values.kvp_list.remove(idx);
-            self.values.kvp_index.remove(&removed.borrow().key.escaped);
+            self.values.remove(idx);
         } else {
             let real_idx = idx - self.values.kvp_list.len();
             let remove = self.container_list.remove(real_idx);
@@ -563,7 +572,7 @@ impl ValuesMap {
     }
 
     fn insert_child(&mut self, idx: usize, key: String, value: Value) {
-        let mut node = ValueNode::new(key.clone(), value);
+        let node = ValueNode::new(key.clone(), value);
         let node = Rc::new(RefCell::new(node));
         self.kvp_list.insert(idx, node.clone());
         if let Some(..) = self.kvp_index.insert(key, node) {
@@ -694,6 +703,24 @@ impl ValuesMap {
                 )
             )
         }
+    }
+
+    fn remove(&mut self, idx: usize) {
+        let removed = self.kvp_list.remove(idx);
+        self.kvp_index.remove(&removed.borrow().key.escaped);
+    }
+
+    fn find(&self, token: usize) -> Option<usize> {
+        for (idx, rc) in self.kvp_list.iter().enumerate() {
+            let inner : &ValueNode = &rc.borrow();
+            if inner as *const ValueNode as usize == token {
+                return Some(idx)
+            }
+            if &inner.value as *const FormattedValue as usize == token {
+                return Some(idx)
+            }
+        }
+        None
     }
 }
 
@@ -1264,6 +1291,10 @@ impl InlineTable {
         self.data().values.direct.iter_children()
     }
 
+    pub fn get_child(&self, idx: usize) -> &DirectChild {
+        unsafe { DirectChild::new_rc(self.data().values.direct.get_at(idx)) }
+    }
+
     fn iter_entries<'a>(&'a self)
                     -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
         self.data().values.direct.iter_entries()
@@ -1304,53 +1335,61 @@ impl InlineTable {
         }
     }
 
-    pub fn insert_string(&mut self, idx: usize, key: String, value: String)
-                         -> &mut StringValue {
-        self.data_mut().values.direct.insert_string(idx, key, value);
+    pub fn insert_string<S:Into<String>>(&mut self, idx: usize, key: S, value: S) 
+                                         -> &mut StringValue {
+        self.data_mut().values.direct.insert_string(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         self.data_mut().values.direct.get_string(idx)
     }
 
-    pub fn insert_integer(&mut self, idx: usize, key: String, value: i64)
+    pub fn insert_integer<S:Into<String>>(&mut self, idx: usize, key: S, value: i64)
                           -> &mut IntegerValue {
-        self.data_mut().values.direct.insert_integer(idx, key, value);
+        self.data_mut().values.direct.insert_integer(idx, key.into(), value);
         self.adjust_trivia(idx);
         self.data_mut().values.direct.get_integer(idx)
     }
 
-    pub fn insert_float(&mut self, idx: usize, key: String, value: f64)
+    pub fn insert_float<S:Into<String>>(&mut self, idx: usize, key: S, value: f64)
                           -> &mut FloatValue {
-        self.data_mut().values.direct.insert_float(idx, key, value);
+        self.data_mut().values.direct.insert_float(idx, key.into(), value);
         self.adjust_trivia(idx);
         self.data_mut().values.direct.get_float(idx)
     }
 
-    pub fn insert_boolean(&mut self, idx: usize, key: String, value: bool)
+    pub fn insert_boolean<S:Into<String>>(&mut self, idx: usize, key: S, value: bool)
                           -> &mut BoolValue {
-        self.data_mut().values.direct.insert_boolean(idx, key, value);
+        self.data_mut().values.direct.insert_boolean(idx, key.into(), value);
         self.adjust_trivia(idx);
         self.data_mut().values.direct.get_boolean(idx)
     }
 
-    pub fn insert_datetime(&mut self, idx: usize, key: String, value: String)
+    pub fn insert_datetime<S:Into<String>>(&mut self, idx: usize, key: S, value: S)
                            -> &mut DatetimeValue {
-        self.data_mut().values.direct.insert_datetime(idx, key, value);
+        self.data_mut().values.direct.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         self.data_mut().values.direct.get_datetime(idx)
     }
 
-    pub fn insert_array(&mut self, idx: usize, key: String)
+    pub fn insert_array<S:Into<String>>(&mut self, idx: usize, key: S)
                           -> &mut InlineArray {
-        self.data_mut().values.direct.insert_array(idx, key);
+        self.data_mut().values.direct.insert_array(idx, key.into());
         self.adjust_trivia(idx);
         self.data_mut().values.direct.get_array(idx)
     }
 
-    pub fn insert_inline_table(&mut self, idx: usize, key: String)
+    pub fn insert_inline_table<S:Into<String>>(&mut self, idx: usize, key: S)
                           -> &mut InlineTable {
-        self.data_mut().values.direct.insert_inline_table(idx, key);
+        self.data_mut().values.direct.insert_inline_table(idx, key.into());
         self.adjust_trivia(idx);
         self.data_mut().values.direct.get_inline_table(idx)
+    }
+
+    pub fn remove(&mut self, idx: usize) {
+        self.data_mut().values.direct.remove(idx);
+    }
+
+    pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
+        self.data().values.direct.find(node.ptr())
     }
 }
 
@@ -1545,8 +1584,8 @@ mod tests {
             let mut doc = Document::new();
             {
                 let val = doc.insert_string(0,
-                                            "foo".to_owned(),
-                                            "bar".to_owned());
+                                            "foo",
+                                            "bar");
                 assert_eq!(r#""bar""#, val.raw());
             }
             assert_eq!(1, doc.len());
@@ -1557,8 +1596,8 @@ mod tests {
             let mut doc = Document::new();
             {
                 let val = doc.insert_string(0,
-                                            "foo".to_owned(),
-                                            "b\nr".to_owned());
+                                            "foo",
+                                            "b\nr");
                 assert_eq!(r#""b\nr""#, val.raw());
             }
             assert_eq!(1, doc.len());
@@ -1569,8 +1608,8 @@ mod tests {
             let mut doc = Document::new();
             {
                 let val = doc.insert_string(0,
-                                            "foo".to_owned(),
-                                            "\u{0016}".to_owned());
+                                            "foo",
+                                            "\u{0016}");
                 assert_eq!("\"\\u0016\"", val.raw());
             }
             assert_eq!(1, doc.len());
@@ -1580,7 +1619,7 @@ mod tests {
         fn insert_integer_zero() {
             let mut doc = Document::new();
             {
-                let val = doc.insert_integer(0, "foo".to_owned(), 0);
+                let val = doc.insert_integer(0, "foo", 0);
                 assert_eq!("0", val.raw());
             }
             assert_eq!(1, doc.len());
@@ -1591,7 +1630,7 @@ mod tests {
             let mut doc = Document::new();
             {
                 let val = doc.insert_integer(0,
-                                             "foo".to_owned(),
+                                             "foo",
                                              -9223372036854775808);
                 assert_eq!("-9223372036854775808", val.raw());
             }
@@ -1603,7 +1642,7 @@ mod tests {
             let mut doc = Document::new();            
             {
                 let val = doc.insert_integer(0,
-                                             "foo".to_owned(),
+                                             "foo",
                                              9223372036854775807);
                 assert_eq!("9223372036854775807", val.raw());
             }
@@ -1614,7 +1653,7 @@ mod tests {
         fn insert_float_neg() {
             let mut doc = Document::new();
             {
-                let val = doc.insert_float(0, "foo".to_owned(), -0.3);
+                let val = doc.insert_float(0, "foo", -0.3);
                 assert_eq!("-0.3", val.raw());
             }
             assert_eq!(1, doc.len());
@@ -1624,7 +1663,7 @@ mod tests {
         fn insert_bool() {
             let mut doc = Document::new();
             {
-                let val = doc.insert_boolean(0, "foo".to_owned(), false);
+                let val = doc.insert_boolean(0, "foo", false);
                 assert_eq!(false, val.get());
             }
             assert_eq!(1, doc.len());
@@ -1634,7 +1673,7 @@ mod tests {
         fn insert_array() {
             let mut doc = Document::new();
             {
-                let val = doc.insert_array(0, "foo".to_owned());
+                let val = doc.insert_array(0, "foo");
                 assert_eq!(0, val.len());
             }
             assert_eq!(1, doc.len());
@@ -1644,7 +1683,7 @@ mod tests {
         fn insert_inline_table() {
             let mut doc = Document::new();
             {
-                let val = doc.insert_inline_table(0, "foo".to_owned());
+                let val = doc.insert_inline_table(0, "foo");
                 assert_eq!(0, val.len());
             }
             assert_eq!(1, doc.len());
@@ -1655,8 +1694,8 @@ mod tests {
             let mut doc = Document::new();
             {
                 let val = doc.insert_datetime(0,
-                                              "foo".to_owned(),
-                                              "1979-05-27T07:32:00Z".to_owned());
+                                              "foo",
+                                              "1979-05-27T07:32:00Z");
                 assert_eq!("1979-05-27T07:32:00Z", val.get());
             }
             assert_eq!(1, doc.len());
@@ -1667,13 +1706,29 @@ mod tests {
             let mut doc = Document::new();
             {
                 doc.insert_container(0,
-                                     vec!("foo".to_owned()).into_iter(),
+                                     vec!("foo").into_iter(),
                                      ContainerKind::Table);
                 doc.insert_container(1,
-                                     vec!("bar".to_owned()).into_iter(),
+                                     vec!("bar").into_iter(),
                                      ContainerKind::Table);
             }
             assert_eq!(2, doc.len());
+        }
+
+        #[test]
+        fn remove_from_inline_table() {
+            let mut doc = Document::new();
+            {
+                let mut val = doc.insert_inline_table(0, "foo");
+                {
+                    val.insert_string(0, "asd", "fgh");
+                };
+                assert_eq!(1, val.len());
+                let sub = val.get_child(0);
+                assert_eq!(Some(0), val.find(sub));
+                assert_eq!(Some(0), val.find(&sub.value()));
+            }
+            assert_eq!(1, doc.len());
         }
     }
 }
