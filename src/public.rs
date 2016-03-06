@@ -112,7 +112,7 @@ impl Document {
     }
 
     pub fn get_child(&self, idx: usize) -> &DirectChild {
-        unsafe { DirectChild::new_rc(self.values.get_at(idx)) }
+        self.values.get_child(idx)
     }
 
     pub fn len_children(&self) -> usize {
@@ -549,8 +549,8 @@ impl ValuesMap {
             .map(|val| ValueNode::as_cursor(val))
     }
 
-    fn get_at(&self, idx: usize) -> &Rc<RefCell<ValueNode>> {
-        &self.kvp_list[idx]
+    fn get_child(&self, idx: usize) -> &DirectChild {
+        unsafe { DirectChild::new_rc(&self.kvp_list[idx]) }
     }
 
     fn len(&self) -> usize {
@@ -811,21 +811,25 @@ impl Container {
         transmute_lifetime(&*src.borrow())
     }
 
-    fn len_logical(&self) -> usize {
-        self.data.direct.len() + self.data.indirect.len()
-    }
-
-    fn iter_logical<'a>(&'a self)
-                        -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
-        self.data.iter_logical()
+    pub fn kind(&self) -> ContainerKind {
+        self.kind
     }
 
     pub fn get(&self, key: &str) -> Option<EntryRef> {
         self.data.get(key)
     }
 
-    pub fn kind(&self) -> ContainerKind {
-        self.kind
+    pub fn len_entries(&self) -> usize {
+        self.data.direct.len() + self.data.indirect.len()
+    }
+
+    pub fn iter_entries<'a>(&'a self) 
+                        -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
+        self.data.iter_logical()
+    }
+
+    pub fn get_child(&self, idx: usize) -> &DirectChild {
+        self.data.direct.get_child(idx)
     }
 
     pub fn len_children(&self) -> usize {
@@ -838,6 +842,68 @@ impl Container {
 
     pub fn keys(&self) -> &ContainerKeysMarkup {
         &ContainerKeysMarkup::new(&self)
+    }
+
+    fn adjust_trivia(&mut self, idx: usize) {
+        // TODO: Mark last container
+        self.data.direct.get_at_mut(idx).value.markup.trail = "\n".to_owned();
+    }
+
+    pub fn insert_string<S:Into<String>>(&mut self, idx: usize, key: S, value: S) 
+                                         -> &mut StringValue {
+        self.data.direct.insert_string(idx, key.into(), value.into());
+        self.adjust_trivia(idx);
+        self.data.direct.get_string(idx)
+    }
+
+    pub fn insert_integer<S:Into<String>>(&mut self, idx: usize, key: S, value: i64)
+                          -> &mut IntegerValue {
+        self.data.direct.insert_integer(idx, key.into(), value);
+        self.adjust_trivia(idx);
+        self.data.direct.get_integer(idx)
+    }
+
+    pub fn insert_float<S:Into<String>>(&mut self, idx: usize, key: S, value: f64)
+                          -> &mut FloatValue {
+        self.data.direct.insert_float(idx, key.into(), value);
+        self.adjust_trivia(idx);
+        self.data.direct.get_float(idx)
+    }
+
+    pub fn insert_boolean<S:Into<String>>(&mut self, idx: usize, key: S, value: bool)
+                          -> &mut BoolValue {
+        self.data.direct.insert_boolean(idx, key.into(), value);
+        self.adjust_trivia(idx);
+        self.data.direct.get_boolean(idx)
+    }
+
+    pub fn insert_datetime<S:Into<String>>(&mut self, idx: usize, key: S, value: S)
+                           -> &mut DatetimeValue {
+        self.data.direct.insert_datetime(idx, key.into(), value.into());
+        self.adjust_trivia(idx);
+        self.data.direct.get_datetime(idx)
+    }
+
+    pub fn insert_array<S:Into<String>>(&mut self, idx: usize, key: S)
+                          -> &mut InlineArray {
+        self.data.direct.insert_array(idx, key.into());
+        self.adjust_trivia(idx);
+        self.data.direct.get_array(idx)
+    }
+
+    pub fn insert_inline_table<S:Into<String>>(&mut self, idx: usize, key: S)
+                          -> &mut InlineTable {
+        self.data.direct.insert_inline_table(idx, key.into());
+        self.adjust_trivia(idx);
+        self.data.direct.get_inline_table(idx)
+    }
+
+    pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
+        self.data.direct.find(node.ptr())
+    }
+
+    pub fn remove(&mut self, idx: usize) {
+        self.data.direct.remove(idx);
     }
 
     pub fn to_entry(&self) -> EntryRef {
@@ -1174,7 +1240,7 @@ impl<'a> TableEntry<'a> {
         match self.data {
             Table::Inline(ref data) => data.len(),
             Table::Implicit(ref map) => implicit_table_len_logical(map),
-            Table::Explicit(ref data) => data.len_logical(),
+            Table::Explicit(ref data) => data.len_entries(),
         }
     }
 
@@ -1182,7 +1248,7 @@ impl<'a> TableEntry<'a> {
         match self.data {
             Table::Inline(ref data) => data.iter_entries(),
             Table::Implicit(ref map) => implicit_table_iter_logical(map),
-            Table::Explicit(ref data) => data.iter_logical(),
+            Table::Explicit(ref data) => data.iter_entries(),
         }
     }
 
@@ -1292,7 +1358,7 @@ impl InlineTable {
     }
 
     pub fn get_child(&self, idx: usize) -> &DirectChild {
-        unsafe { DirectChild::new_rc(self.data().values.direct.get_at(idx)) }
+        self.data().values.direct.get_child(idx)
     }
 
     fn iter_entries<'a>(&'a self)
@@ -1310,12 +1376,6 @@ impl InlineTable {
 
     pub fn get_comma_trivia(&self) -> &str {
         &self.data().comma_trail
-    }
-
-    pub fn as_ref(&self) -> TableEntry {
-        TableEntry {
-            data: Table::Inline(self)
-        }
     }
 
     fn adjust_trivia(&mut self, idx: usize) {
@@ -1384,12 +1444,18 @@ impl InlineTable {
         self.data_mut().values.direct.get_inline_table(idx)
     }
 
+    pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
+        self.data().values.direct.find(node.ptr())
+    }
+
     pub fn remove(&mut self, idx: usize) {
         self.data_mut().values.direct.remove(idx);
     }
 
-    pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
-        self.data().values.direct.find(node.ptr())
+    pub fn to_entry(&self) -> TableEntry {
+        TableEntry {
+            data: Table::Inline(self)
+        }
     }
 }
 
