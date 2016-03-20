@@ -161,7 +161,7 @@ impl Document {
                          -> &mut StringValue {
         self.values.insert_string(idx, key.into(), val.into());
         self.adjust_trivia(idx);
-        self.values.get_string(idx)
+        Value::get_string(&mut self.values.get_at_mut(idx).value)
     }
 
     pub fn insert_integer<S:Into<String>>(&mut self,
@@ -171,7 +171,7 @@ impl Document {
                                           -> &mut IntegerValue {
         self.values.insert_integer(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.values.get_integer(idx)
+        Value::get_integer(&mut self.values.get_at_mut(idx).value)
     }
 
     pub fn insert_float<S:Into<String>>(&mut self,
@@ -181,7 +181,7 @@ impl Document {
                                         -> &mut FloatValue {
         self.values.insert_float(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.values.get_float(idx)
+        Value::get_float(&mut self.values.get_at_mut(idx).value)
     }
 
     pub fn insert_boolean<S:Into<String>>(&mut self,
@@ -191,7 +191,7 @@ impl Document {
                                           -> &mut BoolValue {
         self.values.insert_boolean(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.values.get_boolean(idx)
+        Value::get_boolean(&mut self.values.get_at_mut(idx).value)
     }
 
     pub fn insert_datetime<S:Into<String>>(&mut self,
@@ -200,7 +200,7 @@ impl Document {
                                            -> &mut DatetimeValue {
         self.values.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
-        self.values.get_datetime(idx)
+        Value::get_datetime(&mut self.values.get_at_mut(idx).value)
     }
 
     pub fn insert_array<S:Into<String>>(&mut self,
@@ -209,7 +209,7 @@ impl Document {
                                         -> &mut InlineArray {
         self.values.insert_array(idx, key.into());
         self.adjust_trivia(idx);
-        self.values.get_array(idx)
+        Value::get_array(&mut self.values.get_at_mut(idx).value)
     }
 
     pub fn insert_inline_table<S:Into<String>>(&mut self,
@@ -218,7 +218,7 @@ impl Document {
                                                -> &mut InlineTable {
         self.values.insert_inline_table(idx, key.into());
         self.adjust_trivia(idx);
-        self.values.get_inline_table(idx)
+        Value::get_inline_table(&mut self.values.get_at_mut(idx).value)
     }
 
     pub fn insert_container<K, S>(&mut self,
@@ -582,127 +582,33 @@ impl ValuesMap {
     }
 
     fn insert_string(&mut self, idx: usize, key: String, value: String) {
-        let value = Value::String(
-            StringData {
-                raw: super::escape_string(&value),
-                escaped: value
-            }
-        );
-        self.insert_child(idx, key, value);
-    }
-
-    fn get_string(&mut self, idx: usize) -> &mut StringValue {
-        unsafe {
-            StringValue::new_mut(
-                transmute_lifetime_mut(
-                    &mut self.get_at_mut(idx).value
-                )
-            )
-        }
+        self.insert_child(idx, key, Value::new_string(value));
     }
 
     fn insert_integer(&mut self, idx: usize, key: String, value: i64) {
-        let value = Value::Integer{
-            raw: value.to_string(),
-            parsed: value
-        };
-        self.insert_child(idx, key, value);
-    }
-
-    fn get_integer(&mut self, idx: usize) -> &mut IntegerValue {
-        unsafe {
-            IntegerValue::new_mut(
-                transmute_lifetime_mut(
-                    &mut self.get_at_mut(idx).value
-                )
-            )
-        }
+        self.insert_child(idx, key, Value::new_integer(value));
     }
 
     fn insert_float(&mut self, idx: usize, key: String, value: f64) {
-        let value = Value::Float{
-            raw: value.to_string(),
-            parsed: value
-        };
-        self.insert_child(idx, key, value);
-    }
-
-    fn get_float(&mut self, idx: usize) -> &mut FloatValue {
-        unsafe {
-            FloatValue::new_mut(
-                transmute_lifetime_mut(
-                    &mut self.get_at_mut(idx).value
-                )
-            )
-        }
+        self.insert_child(idx, key, Value::new_float(value));
     }
 
     fn insert_boolean(&mut self, idx: usize, key: String, value: bool) {
-        let value = Value::Boolean(value);
-        self.insert_child(idx, key, value);
-    }
-
-    fn get_boolean(&mut self, idx: usize) -> &mut BoolValue {
-        unsafe {
-            BoolValue::new_mut(
-                transmute_lifetime_mut(
-                    &mut self.get_at_mut(idx).value
-                )
-            )
-        }
+        self.insert_child(idx, key, Value::new_boolean(value));
     }
 
     fn insert_datetime(&mut self, idx: usize, key: String, value: String) {
-        if !Parser::_is_valid_datetime(&value) {
-            panic!("Malformed date literal `{}` for key `{}`", value, key)
-        }
-        let value = Value::Datetime(value);
+        let value = Value::new_datetime(Some(&key), value);
         self.insert_child(idx, key, value);
-    }
-
-    fn get_datetime(&mut self, idx: usize) -> &mut DatetimeValue {
-        unsafe {
-            DatetimeValue::new_mut(
-                transmute_lifetime_mut(
-                    &mut self.get_at_mut(idx).value
-                )
-            )
-        }
     }
 
     fn insert_array(&mut self, idx: usize, key: String) {
-        let value = Value::InlineArray(
-            InlineArrayData {
-                values: Vec::new(),
-                comma_trail: "".to_owned()
-            }
-        );
-        self.insert_child(idx, key, value);
-    }
-
-    fn get_array(&mut self, idx: usize) -> &mut InlineArray {
-        unsafe {
-            InlineArray::new_mut(
-                transmute_lifetime_mut(
-                    &mut self.get_at_mut(idx).value
-                )
-            )
-        }
+        self.insert_child(idx, key, Value::new_array());
     }
 
     fn insert_inline_table(&mut self, idx: usize, key: String) {
-        let value = Value::new_table(ValuesMap::new(), "".to_owned());
+        let value = Value::new_table(ValuesMap::new(), "".to_string());
         self.insert_child(idx, key, value);
-    }
-
-    fn get_inline_table(&mut self, idx: usize) -> &mut InlineTable {
-        unsafe {
-            InlineTable::new_mut(
-                transmute_lifetime_mut(
-                    &mut self.get_at_mut(idx).value
-                )
-            )
-        }
     }
 
     fn remove(&mut self, idx: usize) {
@@ -853,49 +759,50 @@ impl Container {
                                          -> &mut StringValue {
         self.data.direct.insert_string(idx, key.into(), value.into());
         self.adjust_trivia(idx);
-        self.data.direct.get_string(idx)
+        Value::get_string(&mut self.data.direct.get_at_mut(idx).value)
+
     }
 
     pub fn insert_integer<S:Into<String>>(&mut self, idx: usize, key: S, value: i64)
                           -> &mut IntegerValue {
         self.data.direct.insert_integer(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.data.direct.get_integer(idx)
+        Value::get_integer(&mut self.data.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_float<S:Into<String>>(&mut self, idx: usize, key: S, value: f64)
                           -> &mut FloatValue {
         self.data.direct.insert_float(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.data.direct.get_float(idx)
+        Value::get_float(&mut self.data.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_boolean<S:Into<String>>(&mut self, idx: usize, key: S, value: bool)
                           -> &mut BoolValue {
         self.data.direct.insert_boolean(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.data.direct.get_boolean(idx)
+        Value::get_boolean(&mut self.data.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_datetime<S:Into<String>>(&mut self, idx: usize, key: S, value: S)
                            -> &mut DatetimeValue {
         self.data.direct.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
-        self.data.direct.get_datetime(idx)
+        Value::get_datetime(&mut self.data.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_array<S:Into<String>>(&mut self, idx: usize, key: S)
                           -> &mut InlineArray {
         self.data.direct.insert_array(idx, key.into());
         self.adjust_trivia(idx);
-        self.data.direct.get_array(idx)
+        Value::get_array(&mut self.data.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_inline_table<S:Into<String>>(&mut self, idx: usize, key: S)
                           -> &mut InlineTable {
         self.data.direct.insert_inline_table(idx, key.into());
         self.adjust_trivia(idx);
-        self.data.direct.get_inline_table(idx)
+        Value::get_inline_table(&mut self.data.direct.get_at_mut(idx).value)
     }
 
     pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
@@ -1127,6 +1034,20 @@ impl DatetimeValue {
 
 define_view!(InlineArray, FormattedValue);
 
+macro_rules! panic_if_wrong_type {
+    ($exp: expr, $target: pat, $err_type: expr) => ({
+        let temp = $exp;
+        if temp.len() > 0 {
+            match &temp[0].value {
+                &$target => { },
+                val => {
+                    panic!("Element of wrong type inserted into array: expected {}, got: {}", val.type_str(), $err_type)
+                }
+            }
+        }
+    })
+}
+
 impl InlineArray {
     pub fn markup(&self) -> &InlineArrayMarkup {
         InlineArrayMarkup::new(&self.0)
@@ -1135,12 +1056,17 @@ impl InlineArray {
     pub fn markup_mut(&mut self) -> &mut InlineArrayMarkup {
         InlineArrayMarkup::new_mut(&mut self.0)
     }
-}
 
-impl InlineArray {
     fn data(&self) -> &InlineArrayData {
         match self.0.value {
             super::Value::InlineArray(ref arr_data) => arr_data,
+            _ => unreachable!()
+        }
+    }
+    
+    fn data_mut(&mut self) -> &mut InlineArrayData {
+        match self.0.value {
+            super::Value::InlineArray(ref mut arr_data) => arr_data,
             _ => unreachable!()
         }
     }
@@ -1157,6 +1083,70 @@ impl InlineArray {
         Values {
             iter: self.data().values.iter()
         }
+    }
+
+    fn insert_child(&mut self, idx: usize, value: Value) {
+        let mut value = FormattedValue::new(" ".to_string(), value);
+        if idx == self.data().values.len() {
+            value.markup.trail = " ".to_string();
+        };
+        self.data_mut().values.insert(idx, value);
+    }
+
+    pub fn insert_string<S:Into<String>>(&mut self, idx: usize, value: S) 
+                                         -> &mut StringValue {
+        panic_if_wrong_type!(&self.data().values, Value::String(..), "string");
+        let node = Value::new_string(value.into());
+        self.insert_child(idx, node);
+        Value::get_string(&mut self.data_mut().values[idx])
+    }
+
+    pub fn insert_integer<S:Into<String>>(&mut self, idx: usize, value: i64) 
+                                          -> &mut IntegerValue {
+        panic_if_wrong_type!(&self.data().values, Value::Integer{..}, "integer");
+        let node = Value::new_integer(value);
+        self.insert_child(idx, node);
+        Value::get_integer(&mut self.data_mut().values[idx])
+    }
+
+    pub fn insert_float(&mut self, idx: usize, value: f64) 
+                        -> &mut FloatValue {
+        panic_if_wrong_type!(&self.data().values, Value::Float{..}, "float");
+        let node = Value::new_float(value);
+        self.insert_child(idx, node);
+        Value::get_float(&mut self.data_mut().values[idx])
+    }
+
+    pub fn insert_boolean(&mut self, idx: usize, value: bool)
+                          -> &mut BoolValue {
+        panic_if_wrong_type!(&self.data().values, Value::Boolean(..), "boolean");
+        let node = Value::new_boolean(value);
+        self.insert_child(idx, node);
+        Value::get_boolean(&mut self.data_mut().values[idx])
+    }
+
+    pub fn insert_datetime<S:Into<String>>(&mut self,
+                                           idx: usize,
+                                           value: S) 
+                                           -> &mut DatetimeValue {
+        panic_if_wrong_type!(&self.data().values, Value::Datetime(..), "datetime");
+        let node = Value::new_datetime(None, value.into());
+        self.insert_child(idx, node);
+        Value::get_datetime(&mut self.data_mut().values[idx])
+    }
+
+    pub fn insert_array(&mut self, idx: usize) -> &mut InlineArray {
+        panic_if_wrong_type!(&self.data().values, Value::InlineArray(..), "array");
+        let node = Value::new_array();
+        self.insert_child(idx, node);
+        Value::get_array(&mut self.data_mut().values[idx])
+    }
+
+    pub fn insert_inline_table(&mut self, idx: usize) -> &mut InlineTable {
+        panic_if_wrong_type!(&self.data().values, Value::InlineTable(..), "table");
+        let node = Value::new_table(ValuesMap::new(), "".to_string());
+        self.insert_child(idx, node);
+        Value::get_inline_table(&mut self.data_mut().values[idx])
     }
 }
 
@@ -1399,49 +1389,49 @@ impl InlineTable {
                                          -> &mut StringValue {
         self.data_mut().values.direct.insert_string(idx, key.into(), value.into());
         self.adjust_trivia(idx);
-        self.data_mut().values.direct.get_string(idx)
+        Value::get_string(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_integer<S:Into<String>>(&mut self, idx: usize, key: S, value: i64)
                           -> &mut IntegerValue {
         self.data_mut().values.direct.insert_integer(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.data_mut().values.direct.get_integer(idx)
+        Value::get_integer(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_float<S:Into<String>>(&mut self, idx: usize, key: S, value: f64)
                           -> &mut FloatValue {
         self.data_mut().values.direct.insert_float(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.data_mut().values.direct.get_float(idx)
+        Value::get_float(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_boolean<S:Into<String>>(&mut self, idx: usize, key: S, value: bool)
                           -> &mut BoolValue {
         self.data_mut().values.direct.insert_boolean(idx, key.into(), value);
         self.adjust_trivia(idx);
-        self.data_mut().values.direct.get_boolean(idx)
+        Value::get_boolean(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_datetime<S:Into<String>>(&mut self, idx: usize, key: S, value: S)
                            -> &mut DatetimeValue {
         self.data_mut().values.direct.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
-        self.data_mut().values.direct.get_datetime(idx)
+        Value::get_datetime(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_array<S:Into<String>>(&mut self, idx: usize, key: S)
                           -> &mut InlineArray {
         self.data_mut().values.direct.insert_array(idx, key.into());
         self.adjust_trivia(idx);
-        self.data_mut().values.direct.get_array(idx)
+        Value::get_array(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
     pub fn insert_inline_table<S:Into<String>>(&mut self, idx: usize, key: S)
                           -> &mut InlineTable {
         self.data_mut().values.direct.insert_inline_table(idx, key.into());
         self.adjust_trivia(idx);
-        self.data_mut().values.direct.get_inline_table(idx)
+        Value::get_inline_table(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
     pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
@@ -1606,6 +1596,82 @@ impl ValueMarkup {
         }
         chars = eat_newline(chars, MALFORMED_TRAIL_MSG);
         eat_eof(chars, MALFORMED_TRAIL_MSG);
+    }
+}
+
+impl Value {
+    fn new_string(value: String) -> Value {
+        Value::String(
+            StringData {
+                raw: super::escape_string(&value),
+                escaped: value
+            }
+        )
+    }
+
+    fn get_string<'a, 'b>(src: &'a mut FormattedValue) -> &'b mut StringValue {
+        unsafe { StringValue::new_mut(transmute_lifetime_mut(src)) }
+    }
+    
+    fn new_integer(value: i64) -> Value {
+        Value::Integer{
+            raw: value.to_string(),
+            parsed: value
+        }
+    }
+
+    fn get_integer<'a, 'b>(src: &'a mut FormattedValue) -> &'b mut IntegerValue {
+        unsafe { IntegerValue::new_mut(transmute_lifetime_mut(src)) }
+    }
+    
+    fn new_float(value: f64) -> Value {
+        Value::Float{
+            raw: value.to_string(),
+            parsed: value
+        }
+    }
+
+    fn get_float<'a, 'b>(src: &'a mut FormattedValue) -> &'b mut FloatValue {
+        unsafe { FloatValue::new_mut(transmute_lifetime_mut(src)) }
+    }
+    
+    fn new_boolean(value: bool) -> Value {
+        Value::Boolean(value)
+    }
+
+    fn get_boolean<'a, 'b>(src: &'a mut FormattedValue) -> &'b mut BoolValue {
+        unsafe { BoolValue::new_mut(transmute_lifetime_mut(src)) }
+    }
+    
+    fn new_datetime(key: Option<&str>, value: String) -> Value {
+        if !Parser::_is_valid_datetime(&value) {
+            match key {
+                Some(key) => panic!("Malformed date literal `{}` for key `{}`", value, key),
+                None => panic!("Malformed date literal `{}`", value)
+            }
+        }
+        Value::Datetime(value)
+    }
+
+    fn get_datetime<'a, 'b>(src: &'a mut FormattedValue) -> &'b mut DatetimeValue {
+        unsafe { DatetimeValue::new_mut(transmute_lifetime_mut(src)) }
+    }
+    
+    fn new_array() -> Value {
+        Value::InlineArray(
+            InlineArrayData {
+                values: Vec::new(),
+                comma_trail: "".to_owned()
+            }
+        )
+    }
+
+    fn get_array<'a, 'b>(src: &'a mut FormattedValue) -> &'b mut InlineArray {
+        unsafe { InlineArray::new_mut(transmute_lifetime_mut(src)) }
+    }
+
+    fn get_inline_table<'a, 'b>(src: &'a mut FormattedValue) -> &'b mut InlineTable {
+        unsafe { InlineTable::new_mut(transmute_lifetime_mut(src)) }
     }
 }
 
