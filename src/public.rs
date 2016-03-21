@@ -617,16 +617,12 @@ impl ValuesMap {
     }
 
     fn find(&self, token: usize) -> Option<usize> {
-        for (idx, rc) in self.kvp_list.iter().enumerate() {
-            let inner : &ValueNode = &rc.borrow();
-            if inner as *const ValueNode as usize == token {
-                return Some(idx)
-            }
-            if &inner.value as *const FormattedValue as usize == token {
-                return Some(idx)
-            }
+        fn matches_token(node: &Rc<RefCell<ValueNode>>, token: usize) -> bool {
+            let node = &*node.borrow();
+            node as *const ValueNode as usize == token
+            || &node.value as *const FormattedValue as usize == token
         }
-        None
+        self.kvp_list.iter().position(|vn| matches_token(vn, token))
     }
 }
 
@@ -1147,6 +1143,17 @@ impl InlineArray {
         let node = Value::new_table(ValuesMap::new(), "".to_string());
         self.insert_child(idx, node);
         Value::get_inline_table(&mut self.data_mut().values[idx])
+    }
+
+    pub fn remove(&mut self, idx: usize) {
+        self.data_mut().values.remove(idx);
+    }
+
+    pub fn find<T:InternalNode>(&self, node: &T) -> Option<usize> {
+        let token = node.ptr();
+        self.data().values
+                   .iter()
+                   .position(|vn| &vn as *const _ as usize == token)
     }
 }
 
