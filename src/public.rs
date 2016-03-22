@@ -930,6 +930,10 @@ impl BoolValue {
     pub fn set(&mut self, val: bool) {
         self.0.value = Value::Boolean(val);
     }
+
+    pub fn to_entry(&self) -> EntryRef {
+        EntryRef::Boolean(self)
+    }
 }
 
 define_view!(StringValue, FormattedValue);
@@ -955,6 +959,10 @@ impl StringValue {
             Value::String(ref data) => &data.raw,
             _ => unreachable!()
         }
+    }
+
+    pub fn to_entry(&self) -> EntryRef {
+        EntryRef::String(self)
     }
 }
 
@@ -983,6 +991,10 @@ impl FloatValue {
             _ => unreachable!()
         }
     }
+
+    pub fn to_entry(&self) -> EntryRef {
+        EntryRef::Float(self)
+    }
 }
 
 define_view!(IntegerValue, FormattedValue);
@@ -1010,6 +1022,10 @@ impl IntegerValue {
             _ => unreachable!()
         }
     }
+
+    pub fn to_entry(&self) -> EntryRef {
+        EntryRef::Integer(self)
+    }
 }
 
 define_view!(DatetimeValue, FormattedValue);
@@ -1025,6 +1041,10 @@ impl DatetimeValue {
 
     pub fn set(&mut self, s: String) {
         unimplemented!()
+    }
+
+    pub fn to_entry(&self) -> EntryRef {
+        EntryRef::Datetime(self)
     }
 }
 
@@ -1155,6 +1175,14 @@ impl InlineArray {
                    .iter()
                    .position(|vn| &vn as *const _ as usize == token)
     }
+
+    pub fn to_entry(&self) -> EntryRef {
+        EntryRef::Array(
+            ArrayEntry {
+                data: Array::Inline(self)
+            }
+        )
+    }
 }
 
 define_view!(InlineArrayMarkup, FormattedValue);
@@ -1255,7 +1283,11 @@ impl<'a> TableEntry<'a> {
             Table::Implicit(..) => TableValue::Implicit,
             Table::Explicit(data) => TableValue::Explicit(data)
         }
-    } 
+    }
+
+    pub fn to_entry(self) -> EntryRef<'a> {
+        EntryRef::Table(self)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1318,6 +1350,10 @@ impl<'a> ArrayEntry<'a> {
                 Box::new(iter)
             }
         }
+    }
+
+    pub fn to_entry(self) -> EntryRef<'a> {
+        EntryRef::Array(self)
     }
 }
 
