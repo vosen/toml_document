@@ -8,6 +8,10 @@ keywords = ["encoding", "toml"]
 repository = "https://github.com/vosen/toml_document"
 homepage = "https://github.com/vosen/toml_document"
 documentation = "http://vosen.github.io/toml_document/toml_document"
+description = """
+Document-style TOML parser. Allows editing TOML document in a way which 
+preserves whitespace and comments.
+"""
 
 [dev-dependencies]
 rustc-serialize = "0.3"
