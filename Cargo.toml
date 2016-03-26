@@ -1,11 +1,13 @@
 [package]
-
 name = "toml_document"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Andrzej Janik <vosen@vosen.pl>"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
 keywords = ["encoding", "toml"]
+repository = "https://github.com/vosen/toml_document"
+homepage = "https://github.com/vosen/toml_document"
+documentation = "http://vosen.github.io/toml_document/toml_document"
 
 [dev-dependencies]
 rustc-serialize = "0.3"

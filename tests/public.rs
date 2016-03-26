@@ -1,6 +1,6 @@
 extern crate toml_document;
 
-use toml_document::{Document, ValueRef, Parser, DirectChild, IntegerValue};
+use toml_document::{Document, ValueRef, DirectChild, IntegerValue};
 use toml_document::{Container, ContainerKind, InlineTable};
 
 // These tests make sure that automatically generated trivias for newly inserted
@@ -69,7 +69,7 @@ macro_rules! compare {
     ($name: ident, $text: expr, $builder: ident) => (
         #[test]
         fn $name() {
-            let parsed = Parser::new($text).parse().unwrap();
+            let parsed = Document::parse($text).unwrap();
             let built : Document = $builder();
             assert_eq!(parsed.len_children(), built.len_children());
             for (c1, c2) in parsed.iter_children().zip(built.iter_children()) {
@@ -144,7 +144,7 @@ fn _insert_into_inline() -> Document {
 #[test]
 fn pass_trivia_to_value() {
     let text = "\na=\"b\"#IMPORTANT\n c=10";
-    let mut doc = Parser::new(text).parse().unwrap();
+    let mut doc = Document::parse(text).unwrap();
     doc.remove_preserve_trivia(0);
     assert_eq!("\n#IMPORTANT\n ", doc.get_child(0).key().get_leading_trivia());
 }
@@ -152,7 +152,7 @@ fn pass_trivia_to_value() {
 #[test]
 fn pass_trivia_to_container() {
     let text = "\ta=\"b\"\t \n [foo]";
-    let mut doc = Parser::new(text).parse().unwrap();
+    let mut doc = Document::parse(text).unwrap();
     doc.remove_preserve_trivia(0);
     assert_eq!("\t\t \n ", doc.get_container(0).keys().get_leading_trivia());
 }
@@ -160,7 +160,7 @@ fn pass_trivia_to_container() {
 #[test]
 fn pass_trivia_to_document() {
     let text = "\t\r\na=\"b\"\r\n";
-    let mut doc = Parser::new(text).parse().unwrap();
+    let mut doc = Document::parse(text).unwrap();
     doc.remove_preserve_trivia(0);
     assert_eq!("\t\r\n\r\n", doc.get_trailing_trivia());
 }
@@ -168,7 +168,7 @@ fn pass_trivia_to_document() {
 #[test]
 fn remove_middle_container() {
     let text = "[[a.b]]\n\t[[a.b.c]]\n[[a.b.c]]";
-    let mut doc = Parser::new(text).parse().unwrap();
+    let mut doc = Document::parse(text).unwrap();
     assert_eq!(3, doc.len_containers());
     doc.remove(1);
     assert_eq!(2, doc.len_containers());
@@ -178,7 +178,7 @@ fn remove_middle_container() {
 #[test]
 fn remove_last_container() {
     let text = "[[a.b]]\n\t[[a.b.c]]\n[[a.b.c]]";
-    let mut doc = Parser::new(text).parse().unwrap();
+    let mut doc = Document::parse(text).unwrap();
     assert_eq!(3, doc.len_containers());
     doc.remove(2);
     assert_eq!(2, doc.len_containers());
@@ -188,7 +188,7 @@ fn remove_last_container() {
 #[test]
 fn pass_trivia_to_container_from_container() {
     let text = "\n\n\n[foo]\na=\"b\"\t\t\n[bar]";
-    let mut doc = Parser::new(text).parse().unwrap();
+    let mut doc = Document::parse(text).unwrap();
     doc.remove_preserve_trivia(0);
     assert_eq!("\n\n\n\t\t\n", doc.get_container(0).keys().get_leading_trivia());
 }
@@ -196,7 +196,7 @@ fn pass_trivia_to_container_from_container() {
 #[test]
 fn pass_trivia_to_document_container() {
     let text = "\n\t   [foo]\na=\"b\"\n";
-    let mut doc = Parser::new(text).parse().unwrap();
+    let mut doc = Document::parse(text).unwrap();
     doc.remove_preserve_trivia(0);
     assert_eq!("\n\t   \n", doc.get_trailing_trivia());
 }

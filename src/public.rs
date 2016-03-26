@@ -7,7 +7,7 @@ use std::iter::{Peekable};
 
 use super::{check_ws, eat_before_newline, eat_newline};
 use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
-use Parser;
+use parser::{Parser, ParserError};
 
 use super::{TableData, Container, IndirectChild, PrivKeyMarkup, StringData};
 use super::{Value, ValueNode, ValueMarkup, FormattedKey, FormattedValue};
@@ -90,6 +90,11 @@ impl Document {
             container_index: HashMap::new(),
             trail: String::new(),
         }
+    }
+
+    pub fn parse(text: &str) -> Result<Document, ParserError> {
+        let mut parser = Parser::new(text);
+        parser.parse().ok_or_else(|| parser.errors.remove(0))
     }
 
     pub fn get(&self, key: &str) -> Option<EntryRef> {
@@ -1037,10 +1042,6 @@ impl DatetimeValue {
             Value::Datetime(ref value) => &value,
             _ => unreachable!()
         }
-    }
-
-    pub fn set(&mut self, s: String) {
-        unimplemented!()
     }
 
     pub fn to_entry(&self) -> EntryRef {

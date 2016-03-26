@@ -1,12 +1,10 @@
 extern crate toml_document;
 
-use toml_document::{Parser};
+use toml_document::{Document};
 
 fn run(toml: &str) {
-    let mut p = Parser::new(toml);
-    let table = p.parse();
-    assert!(table.is_none());
-    assert!(p.errors.len() > 0);
+    let table = Document::parse(toml);
+    assert!(table.is_err());
 }
 
 macro_rules! test( ($name:ident, $toml:expr) => (

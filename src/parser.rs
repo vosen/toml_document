@@ -41,34 +41,14 @@ pub struct Parser<'a> {
 #[derive(Debug)]
 pub struct ParserError {
     /// The low byte at which this error is pointing at.
-    pub lo: usize,
+    lo: usize,
     /// One byte beyond the last character at which this error is pointing at.
-    pub hi: usize,
+    hi: usize,
     /// A human-readable description explaining what the error is.
     pub desc: String,
 }
 
 impl<'a> Parser<'a> {
-    /// Creates a new parser for a string.
-    ///
-    /// The parser can be executed by invoking the `parse` method.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let toml = r#"
-    ///     [test]
-    ///     foo = "bar"
-    /// "#;
-    ///
-    /// let mut parser = toml_document::Parser::new(toml);
-    /// match parser.parse() {
-    ///     Some(value) => println!("found toml: {:}", value),
-    ///     None => {
-    ///         println!("parse errors: {:?}", parser.errors);
-    ///     }
-    /// }
-    /// ```
     pub fn new(s: &'a str) -> Parser<'a> {
         Parser {
             input: s,
@@ -81,6 +61,7 @@ impl<'a> Parser<'a> {
     /// Converts a byte offset from an error message to a (line, column) pair
     ///
     /// All indexes are 0-based.
+    #[allow(dead_code)]
     pub fn to_linecol(&self, offset: usize) -> (usize, usize) {
         let mut cur = 0;
         for (i, line) in self.input.lines().enumerate() {
@@ -1073,7 +1054,8 @@ fn is_digit(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {Document, Parser, EntryRef};
+    use {Document, EntryRef};
+    use super::Parser;
 
     macro_rules! bad {
         ($s:expr, $msg:expr) => ({

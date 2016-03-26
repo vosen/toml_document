@@ -1,10 +1,10 @@
-// #![doc(html_root_url = "")]
-// #![deny(missing_docs)]
-// #![cfg_attr(test, deny(warnings))]
+#![doc(html_root_url = "http://vosen.github.io/toml_document/toml_document")]
+//#![deny(missing_docs)]
+#![cfg_attr(test, deny(warnings))]
 
-// #![deny(unused_variables)]
-// #![deny(dead_code)]
-// #![deny(unused_imports)]
+#![deny(unused_variables)]
+#![deny(dead_code)]
+#![deny(unused_imports)]
 
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
@@ -18,7 +18,7 @@ mod parser;
 mod public;
 mod display;
 
-pub use self::parser::{Parser, ParserError};
+pub use self::parser::ParserError;
 pub use public::*;
 pub use display::*;
 

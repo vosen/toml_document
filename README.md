@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/vosen/toml_document.svg?branch=master)](https://travis-ci.org/vosen/toml_document)
 
-[Documentation](http://vosen.github.io/doc/toml_document)
+[Documentation](http://vosen.github.io/toml_document/toml_document)
 
 This library provides a document-style interface to
 [TOML](https://github.com/toml-lang/toml) files. Document-style for this library

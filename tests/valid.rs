@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use rustc_serialize::json::Json;
 
-use toml_document::{Parser, EntryRef};
+use toml_document::{EntryRef, Document};
 
 type LogicalValues<'a> = Box<Iterator<Item = (&'a str, EntryRef<'a>)> + 'a>;
 
@@ -64,13 +64,8 @@ fn to_json(iter: LogicalValues) -> Json {
 }
 
 fn run(toml: &str, json: &str) {
-    let mut p = Parser::new(toml);
-    let doc = p.parse();
-    assert!(p.errors.len() == 0, "had_errors: {:?}",
-            p.errors.iter().map(|e| {
-                (e.desc.clone(), &toml[e.lo - 5..e.hi + 5])
-            }).collect::<Vec<(String, &str)>>());
-    assert!(doc.is_some());
+    let doc = Document::parse(toml);
+    assert!(doc.is_ok());
     let doc = doc.unwrap();
 
     // compare logical structure with jsons
