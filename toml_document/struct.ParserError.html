@@ -48,19 +48,14 @@
             </a>
         </span><a id='src-32' class='srclink' href='../src/toml_document/src/parser.rs.html#42-49' title='goto source code'>[src]</a></span></h1>
 <pre class='rust struct'>pub struct ParserError {
-    pub lo: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.usize.html'>usize</a>,
-    pub hi: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.usize.html'>usize</a>,
     pub desc: <a class='struct' href='https://doc.rust-lang.org/nightly/collections/string/struct.String.html' title='collections::string::String'>String</a>,
+    // some fields omitted
 }</pre><div class='docblock'><p>A structure representing a parse error.</p>
 
 <p>The data in this structure can be used to trace back to the original cause
 of the error in order to provide diagnostics about parse errors.</p>
 </div><h2 class='fields'>Fields</h2>
 <table><tr class='stab '>
-                                  <td id='structfield.lo'><code>lo</code></td><td><div class='docblock'><p>The low byte at which this error is pointing at.</p>
-</div></td></tr><tr class='stab '>
-                                  <td id='structfield.hi'><code>hi</code></td><td><div class='docblock'><p>One byte beyond the last character at which this error is pointing at.</p>
-</div></td></tr><tr class='stab '>
                                   <td id='structfield.desc'><code>desc</code></td><td><div class='docblock'><p>A human-readable description explaining what the error is.</p>
 </div></td></tr></table><h2 id='implementations'>Trait Implementations</h2><h3 class='impl'><code>impl <a class='trait' href='https://doc.rust-lang.org/nightly/std/error/trait.Error.html' title='std::error::Error'>Error</a> for <a class='struct' href='../toml_document/struct.ParserError.html' title='toml_document::ParserError'>ParserError</a></code></h3><div class='impl-items'><h4 id='method.description' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/std/error/trait.Error.html#method.description' class='fnname'>description</a>(&amp;self) -&gt; &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a></code></h4>
 <h4 id='method.cause' class='method'><span class="since">1.0.0</span><code>fn <a href='https://doc.rust-lang.org/nightly/std/error/trait.Error.html#method.cause' class='fnname'>cause</a>(&amp;self) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/option/enum.Option.html' title='core::option::Option'>Option</a>&lt;&amp;<a class='trait' href='https://doc.rust-lang.org/nightly/std/error/trait.Error.html' title='std::error::Error'>Error</a>&gt;</code></h4>

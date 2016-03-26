@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Parser","Parser for converting a string to a TOML `Value` instance."],["ParserError","A structure representing a parse error."]]});
+initSidebarItems({"struct":[["ParserError","A structure representing a parse error."]]});
