@@ -107,6 +107,57 @@ impl Document {
             })
     }
 
+    pub fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
+        match self.values.get_entry_mut(key) {
+            entry @ Some(..) => entry,
+            None => {
+                self.container_index
+                    .get_mut(key)
+                    .map_or(None, |child| Some(child.as_cursor_mut()))
+            }
+        }
+    }
+
+    pub fn lookup<'a, I>(&'a self, mut path: I)
+                         -> Option<EntryRef<'a>> where I: Iterator<Item=&'a str> {
+        self.get(path.next().unwrap()).and_then(|entry| Document::lookup_inner(entry, path))
+    }
+
+    fn lookup_inner<'a, I>(val: EntryRef<'a>, mut path: I)
+                           -> Option<EntryRef<'a>> where I: Iterator<Item=&'a str> {
+        match path.next() {
+            None => Some(val),
+            Some(key) => {
+                match val {
+                    EntryRef::Table(table) => {
+                        table.get(key).and_then(|entry| Document::lookup_inner(entry, path))
+                    }
+                    _ => None
+                }
+            }
+        }
+    }
+
+    pub fn lookup_mut<'a, I>(&'a mut self, mut path: I)
+                             -> Option<EntryRefMut<'a>> where I: Iterator<Item=&'a str> {
+        self.get_mut(path.next().unwrap()).and_then(|e| Document::lookup_inner_mut(e, path))
+    }
+
+    fn lookup_inner_mut<'a, I>(val: EntryRefMut<'a>, mut path: I)
+                               -> Option<EntryRefMut<'a>> where I: Iterator<Item=&'a str> {
+        match path.next() {
+            None => Some(val),
+            Some(key) => {
+                match val {
+                    EntryRefMut::Table(table) => {
+                        table.get_mut(key).and_then(|e| Document::lookup_inner_mut(e, path))
+                    }
+                    _ => None
+                }
+            }
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.values.len() + self.container_index.len()
     }
@@ -554,6 +605,12 @@ impl ValuesMap {
             .map(|val| ValueNode::as_cursor(val))
     }
 
+    fn get_entry_mut(&mut self, key: &str) -> Option<EntryRefMut> {
+        self.kvp_index
+            .get(key)
+            .map(|val| ValueNode::as_cursor_mut(val))
+    }
+
     fn get_child(&self, idx: usize) -> &DirectChild {
         unsafe { DirectChild::new_rc(&self.kvp_list[idx]) }
     }
@@ -711,6 +768,66 @@ impl ValueNode {
             }
         }
     }
+
+    fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> EntryRefMut<'a> {
+        match r.borrow().value.value  {
+            Value::String(..) => {
+                EntryRefMut::String(
+                    StringValue::new_mut(
+                        &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
+                    )
+                )
+            }
+            Value::Integer{..} => {
+                EntryRefMut::Integer(
+                    IntegerValue::new_mut(
+                        &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
+                    )
+                )
+            }
+            Value::Float{..} => {
+                EntryRefMut::Float(
+                    FloatValue::new_mut(
+                        &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
+                    )
+                )
+            }
+            Value::Boolean(..) => {
+                EntryRefMut::Boolean(
+                    BoolValue::new_mut(
+                        &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
+                    )
+                )
+            }
+            Value::Datetime(..) => {
+                EntryRefMut::Datetime(
+                    DatetimeValue::new_mut(
+                        &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
+                    )
+                )
+            }
+            Value::InlineArray(..) => {
+                let value_wrapper = unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) };                
+                EntryRefMut::Array(
+                    ArrayEntryMut {
+                        data: ArrayMut::Inline(
+                            InlineArray::new_mut(&mut value_wrapper.value)
+                        )
+                    }
+                )
+            }
+            Value::InlineTable(..) => {
+                let value_wrapper = unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) };                
+                EntryRefMut::Table(
+                    TableEntryMut {
+                        data: TableMut::Inline(
+                            InlineTable::new_mut(&mut value_wrapper.value)
+                        )
+                    }
+                )
+            }
+        }
+    }
 }
 
 impl Container {
@@ -724,6 +841,10 @@ impl Container {
 
     pub fn get(&self, key: &str) -> Option<EntryRef> {
         self.data.get(key)
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
+        self.data.get_mut(key)
     }
 
     pub fn len_entries(&self) -> usize {
@@ -821,6 +942,14 @@ impl Container {
             }
         )
     }
+
+    pub fn to_entry_mut(&mut self) -> EntryRefMut {
+        EntryRefMut::Table(
+            TableEntryMut {
+                data: TableMut::Explicit(self)
+            }
+        )
+    }
 }
 
 impl super::ContainerData {
@@ -832,6 +961,17 @@ impl super::ContainerData {
                     .get(key)
                     .map_or(None, |c| Some(IndirectChild::as_cursor(c)))
             })
+    }
+
+    fn get_mut(&mut self, key: &str) -> Option<EntryRefMut> {
+        match self.direct.get_entry_mut(key) {
+            entry @ Some(..) => entry,
+            None => {
+                self.indirect
+                    .get_mut(key)
+                    .map_or(None, |c| Some(IndirectChild::as_cursor_mut(c)))
+            }
+        }
     }
 
     fn iter_logical<'a>(&'a self)
@@ -863,6 +1003,34 @@ impl IndirectChild {
                 EntryRef::Array(
                     ArrayEntry {
                         data: Array::Explicit(&arr)
+                    }
+                )
+            }
+        }
+    }
+
+    fn as_cursor_mut(&mut self) -> EntryRefMut {
+        match *self {
+            IndirectChild::ImplicitTable(ref mut map) => {
+                EntryRefMut::Table(
+                    TableEntryMut {
+                        data: TableMut::Implicit(map)
+                    }
+                )
+            }
+            IndirectChild::ExplicitTable(ref container) => {
+                EntryRefMut::Table(
+                    TableEntryMut {
+                        data: TableMut::Explicit(
+                            unsafe { transmute_lifetime_mut(&mut container.borrow_mut()) }
+                        )
+                    }
+                )
+            }
+            IndirectChild::Array(ref mut arr) => {
+                EntryRefMut::Array(
+                    ArrayEntryMut {
+                        data: ArrayMut::Explicit(arr)
                     }
                 )
             }
@@ -921,6 +1089,16 @@ impl<'a> EntryRef<'a> {
     }
 }
 
+pub enum EntryRefMut<'a> {
+    String(&'a mut StringValue),
+    Integer(&'a mut IntegerValue),
+    Float(&'a mut FloatValue),
+    Boolean(&'a mut BoolValue),
+    Datetime(&'a mut DatetimeValue),
+    Array(ArrayEntryMut<'a>),
+    Table(TableEntryMut<'a>),
+}
+
 define_view!(BoolValue, FormattedValue);
 impl_value_markup!(BoolValue);
 
@@ -938,6 +1116,10 @@ impl BoolValue {
 
     pub fn to_entry(&self) -> EntryRef {
         EntryRef::Boolean(self)
+    }
+
+    pub fn to_entry_mut(&mut self) -> EntryRefMut {
+        EntryRefMut::Boolean(self)
     }
 }
 
@@ -968,6 +1150,10 @@ impl StringValue {
 
     pub fn to_entry(&self) -> EntryRef {
         EntryRef::String(self)
+    }
+
+    pub fn to_entry_mut(&mut self) -> EntryRefMut {
+        EntryRefMut::String(self)
     }
 }
 
@@ -1000,6 +1186,10 @@ impl FloatValue {
     pub fn to_entry(&self) -> EntryRef {
         EntryRef::Float(self)
     }
+
+    pub fn to_entry_mut(&mut self) -> EntryRefMut {
+        EntryRefMut::Float(self)
+    }
 }
 
 define_view!(IntegerValue, FormattedValue);
@@ -1031,6 +1221,10 @@ impl IntegerValue {
     pub fn to_entry(&self) -> EntryRef {
         EntryRef::Integer(self)
     }
+
+    pub fn to_entry_mut(&mut self) -> EntryRefMut {
+        EntryRefMut::Integer(self)
+    }
 }
 
 define_view!(DatetimeValue, FormattedValue);
@@ -1046,6 +1240,10 @@ impl DatetimeValue {
 
     pub fn to_entry(&self) -> EntryRef {
         EntryRef::Datetime(self)
+    }
+
+    pub fn to_entry_mut(&mut self) -> EntryRefMut {
+        EntryRefMut::Datetime(self)
     }
 }
 
@@ -1184,6 +1382,14 @@ impl InlineArray {
             }
         )
     }
+
+    pub fn to_entry_mut(&mut self) -> EntryRefMut {
+        EntryRefMut::Array(
+            ArrayEntryMut {
+                data: ArrayMut::Inline(self)
+            }
+        )
+    }
 }
 
 define_view!(InlineArrayMarkup, FormattedValue);
@@ -1235,6 +1441,13 @@ enum Table<'a> {
     Inline(&'a InlineTable),
     Implicit(&'a HashMap<String, IndirectChild>),
     Explicit(&'a Container)
+}
+
+#[derive(Clone, Copy)]
+pub enum TableValue<'a> {
+    Inline(&'a InlineTable),
+    Implicit,
+    Explicit(&'a Container),
 }
 
 impl<'a> TableEntry<'a> {
@@ -1291,11 +1504,51 @@ impl<'a> TableEntry<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum TableValue<'a> {
-    Inline(&'a InlineTable),
+pub struct TableEntryMut<'a> {
+    data: TableMut<'a>
+}
+
+enum TableMut<'a> {
+    Inline(&'a mut InlineTable),
+    Implicit(&'a mut HashMap<String, IndirectChild>),
+    Explicit(&'a mut Container)
+}
+
+pub enum TableValueMut<'a> {
+    Inline(&'a mut InlineTable),
     Implicit,
-    Explicit(&'a Container),
+    Explicit(&'a mut Container),
+}
+
+impl<'a> TableEntryMut<'a> {
+    pub fn get_mut(self, key: &'a str) -> Option<EntryRefMut> {
+        match self.data {
+            TableMut::Inline(data) => data.get_entry_mut(key),
+            TableMut::Implicit(map) => implicit_table_get_mut(map, key),
+            TableMut::Explicit(data) => data.get_mut(key),
+        }
+    }
+
+    pub fn unmut(&'a self) -> TableEntry<'a> {
+        let inner = match self.data {
+            TableMut::Inline(ref data) => Table::Inline(data),
+            TableMut::Implicit(ref data) => Table::Implicit(data),
+            TableMut::Explicit(ref data) => Table::Explicit(data)
+        };
+        TableEntry { data: inner }
+    }
+
+    pub fn to_value(self) -> TableValueMut<'a> {
+        match self.data {
+            TableMut::Inline(data) => TableValueMut::Inline(data),
+            TableMut::Implicit(..) => TableValueMut::Implicit,
+            TableMut::Explicit(data) => TableValueMut::Explicit(data)
+        }
+    }
+
+    pub fn to_entry(self) -> EntryRefMut<'a> {
+        EntryRefMut::Table(self)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1358,6 +1611,41 @@ impl<'a> ArrayEntry<'a> {
     }
 }
 
+pub struct ArrayEntryMut<'a> {
+    data: ArrayMut<'a>
+}
+
+enum ArrayMut<'a> {
+    Inline(&'a mut InlineArray),
+    Explicit(&'a mut [Rc<RefCell<Container>>])
+}
+
+pub enum ArrayValueMut<'a> {
+    Inline(&'a mut InlineArray),
+    OfTables
+}
+
+impl<'a> ArrayEntryMut<'a> {
+    pub fn unmut(&'a self) -> ArrayEntry<'a> {
+        let inner = match self.data {
+            ArrayMut::Inline(ref data) => Array::Inline(data),
+            ArrayMut::Explicit(ref data) => Array::Explicit(data),
+        };
+        ArrayEntry { data: inner }
+    }
+
+    pub fn to_value(self) -> ArrayValueMut<'a> {
+        match self.data {
+            ArrayMut::Inline(data) => ArrayValueMut::Inline(data),
+            ArrayMut::Explicit(..) => ArrayValueMut::OfTables
+        }
+    }
+
+    pub fn to_entry(self) -> EntryRefMut<'a> {
+        EntryRefMut::Array(self)
+    }
+}
+
 define_view!(InlineTable, FormattedValue);
 
 impl InlineTable {
@@ -1381,6 +1669,10 @@ impl InlineTable {
 
     fn get_entry(&self, key: &str) -> Option<EntryRef> {
         self.data().values.direct.get_entry(key)
+    }
+
+    fn get_entry_mut(&mut self, key: &str) -> Option<EntryRefMut> {
+        self.data_mut().values.direct.get_entry_mut(key)
     }
 
     pub fn len(&self) -> usize {
@@ -1491,6 +1783,12 @@ impl InlineTable {
             data: Table::Inline(self)
         }
     }
+
+    pub fn to_entry_mut(&mut self) -> TableEntryMut {
+        TableEntryMut {
+            data: TableMut::Inline(self)
+        }
+    }
 }
 
 fn implicit_table_get<'a>(t: &'a HashMap<String, IndirectChild>,
@@ -1498,6 +1796,11 @@ fn implicit_table_get<'a>(t: &'a HashMap<String, IndirectChild>,
     t.get(key).map(IndirectChild::as_cursor)
 }
 
+
+fn implicit_table_get_mut<'a>(t: &'a mut HashMap<String, IndirectChild>,
+                              key: &str) -> Option<EntryRefMut<'a>> {
+    t.get_mut(key).map(IndirectChild::as_cursor_mut)
+}
 fn implicit_table_len_logical<'a>(t: &'a HashMap<String, IndirectChild>)
                                   -> usize {
     t.len()
