@@ -213,8 +213,9 @@ impl Document {
         }
     }
 
-    pub fn insert_string<S:Into<String>>(&mut self, idx: usize, key: S, val: S)
-                         -> &mut StringValue {
+    pub fn insert_string<S1, S2>(&mut self, idx: usize, key: S1, val: S2)
+                                 -> &mut StringValue
+                                 where S1: Into<String>, S2: Into<String> {
         self.values.insert_string(idx, key.into(), val.into());
         self.adjust_trivia(idx);
         Value::get_string(&mut self.values.get_at_mut(idx).value)
@@ -240,20 +241,21 @@ impl Document {
         Value::get_float(&mut self.values.get_at_mut(idx).value)
     }
 
-    pub fn insert_boolean<S:Into<String>>(&mut self,
-                                          idx: usize,
-                                          key: S,
-                                          value: bool)
-                                          -> &mut BoolValue {
+    pub fn insert_boolean<S: Into<String>>(&mut self,
+                                           idx: usize,
+                                           key: S,
+                                           value: bool)
+                                           -> &mut BoolValue {
         self.values.insert_boolean(idx, key.into(), value);
         self.adjust_trivia(idx);
         Value::get_boolean(&mut self.values.get_at_mut(idx).value)
     }
 
-    pub fn insert_datetime<S:Into<String>>(&mut self,
-                                           idx: usize,
-                                           key: S, value: S)
-                                           -> &mut DatetimeValue {
+    pub fn insert_datetime<S1, S2>(&mut self,
+                                   idx: usize,
+                                   key: S1, value: S2)
+                                   -> &mut DatetimeValue
+                                   where S1: Into<String>, S2: Into<String> {
         self.values.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         Value::get_datetime(&mut self.values.get_at_mut(idx).value)
@@ -877,8 +879,9 @@ impl Container {
         self.data.direct.get_at_mut(idx).value.markup.trail = "\n".to_owned();
     }
 
-    pub fn insert_string<S:Into<String>>(&mut self, idx: usize, key: S, value: S) 
-                                         -> &mut StringValue {
+    pub fn insert_string<S1, S2>(&mut self, idx: usize, key: S1, value: S2) 
+                                 -> &mut StringValue
+                                 where S1: Into<String>, S2: Into<String> {
         self.data.direct.insert_string(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         Value::get_string(&mut self.data.direct.get_at_mut(idx).value)
@@ -906,8 +909,9 @@ impl Container {
         Value::get_boolean(&mut self.data.direct.get_at_mut(idx).value)
     }
 
-    pub fn insert_datetime<S:Into<String>>(&mut self, idx: usize, key: S, value: S)
-                           -> &mut DatetimeValue {
+    pub fn insert_datetime<S1, S2>(&mut self, idx: usize, key: S1, value: S2)
+                                   -> &mut DatetimeValue
+                                   where S1: Into<String>, S2: Into<String> {
         self.data.direct.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         Value::get_datetime(&mut self.data.direct.get_at_mut(idx).value)
@@ -1721,8 +1725,9 @@ impl InlineTable {
         }
     }
 
-    pub fn insert_string<S:Into<String>>(&mut self, idx: usize, key: S, value: S) 
-                                         -> &mut StringValue {
+    pub fn insert_string<S1, S2>(&mut self, idx: usize, key: S1, value: S2) 
+                                 -> &mut StringValue 
+                                 where S1: Into<String>, S2: Into<String> {
         self.data_mut().values.direct.insert_string(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         Value::get_string(&mut self.data_mut().values.direct.get_at_mut(idx).value)
@@ -1749,8 +1754,9 @@ impl InlineTable {
         Value::get_boolean(&mut self.data_mut().values.direct.get_at_mut(idx).value)
     }
 
-    pub fn insert_datetime<S:Into<String>>(&mut self, idx: usize, key: S, value: S)
-                           -> &mut DatetimeValue {
+    pub fn insert_datetime<S1, S2>(&mut self, idx: usize, key: S1, value: S2)
+                           -> &mut DatetimeValue
+                           where S1: Into<String>, S2: Into<String> {
         self.data_mut().values.direct.insert_datetime(idx, key.into(), value.into());
         self.adjust_trivia(idx);
         Value::get_datetime(&mut self.data_mut().values.direct.get_at_mut(idx).value)
