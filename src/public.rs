@@ -1,9 +1,11 @@
 use std::cell::{RefCell};
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::iter::{Peekable};
+use std::mem;
 use std::rc::Rc;
 use std::slice;
 use std::str::Chars;
-use std::iter::{Peekable};
 
 use super::{check_ws, eat_before_newline, eat_newline};
 use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
@@ -56,11 +58,11 @@ macro_rules! impl_value_markup {
 }
 
 unsafe fn transmute_lifetime<'a, 'b, T>(x: &'a T) -> &'b T {
-    ::std::mem::transmute(x)
+    mem::transmute(x)
 }
 
 unsafe fn transmute_lifetime_mut<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
-    ::std::mem::transmute(x)
+    mem::transmute(x)
 }
 
 fn direct_cursor<'a>((k, v): (&'a String, &'a Rc<RefCell<ValueNode>>)) -> (&'a str, EntryRef<'a>) {
@@ -80,6 +82,11 @@ fn iter_logical<'a>(direct: &'a ValuesMap,
     let cont_iter = indirect.iter()
                             .map(indirect_cursor);
     Box::new(val_iter.chain(cont_iter))
+}
+
+enum IndirectPos<'a> {
+    Container(&'a mut IndirectChild),
+    Value(&'a mut HashMap<String, IndirectChild>)
 }
 
 impl Document {
@@ -344,69 +351,307 @@ impl Document {
             self.values.remove(idx);
         } else {
             let real_idx = idx - self.values.kvp_list.len();
-            let remove = self.container_list.remove(real_idx);
-            Document::remove_container(&mut self.container_index,
-                                       &remove.borrow().keys.vec,
-                                       &remove.borrow());
+            let removed = self.container_list.remove(real_idx);
+            Document::remove_container(&mut self.container_index, removed);
         }
     }
 
     fn remove_container(map: &mut HashMap<String, IndirectChild>,
-                        keys: &[FormattedKey],
-                        cnt: &Container) -> bool {
-        fn index_of<T, F>(slice: &[T],
-                          f: F) 
-                          -> Option<usize> where F:Fn(&T) -> bool {
-            for (idx, cnt) in slice.iter().enumerate() {
-                if f(cnt) { return Some(idx); }
+                        removed: Rc<RefCell<Container>>) {
+        let parent =
+        {
+            let container = removed.borrow();
+            let addr = &*container as *const _;
+            let keys = &container.keys.vec;
+            if keys.len() == 1 {
+                map.remove(&keys[0].escaped);
+                map as *mut _
+            } else {
+                let indirect_child = map.get_mut(&keys[0].escaped).unwrap();
+                let start = IndirectPos::Container(indirect_child);
+                let parent = Document::find_remove_from_parent(start,
+                                                               &keys[1..],
+                                                               addr);
+                parent.unwrap()
             }
-            None
+        };
+        let keys = removed.borrow().keys.vec
+                          .iter()
+                          .map(|key| key.escaped.clone())
+                          .collect::<Vec<_>>();
+        let indirect = Document::get_indirect(Document::unpack(removed).data);
+        if indirect.len() > 0 {
+            unsafe { &mut*parent }.insert(keys[keys.len() - 1].clone(),
+                                          IndirectChild::ImplicitTable(indirect));
+        } else {
+            let remove = map.get_mut(&keys[0])
+                            .map(|child| {
+                                Document::remove_empty_implicits(IndirectPos::Container(child),
+                                                                 parent,
+                                                                 &keys[1..])
+                            })
+                            .unwrap_or(None);
+            if remove == Some(true) {
+                map.remove(&keys[0]);
+            }
         }
-        let removed = if keys.len() == 1 {
-            match *map.get_mut(&keys[0].escaped).unwrap() {
-                IndirectChild::ExplicitTable(ref found_cnt) => {
-                    &*found_cnt.borrow() as *const Container == cnt as *const Container
+    }
+
+    /*
+     * If `f` returns false, traversal stops.
+     * We need it to cover cases like this:
+     * [[a]]
+     * [a.b]
+     * [[a]]
+     * [a.b]
+     */
+    fn find_remove_from_parent<'a>(current: IndirectPos<'a>,
+                                   keys: &[FormattedKey],
+                                   container: *const Container)
+                                   -> Option<*mut HashMap<String, IndirectChild>> {
+        if keys.len() == 1 {
+            Document::remove_from_parent(current, &keys[0].escaped, container)
+        } else {
+            match current {
+                IndirectPos::Value(mut cmap) => { // E0409
+                    cmap.get_mut(&keys[0].escaped)
+                        .map(|child| {
+                            let next = IndirectPos::Container(child);
+                            Document::find_remove_from_parent(next, &keys[1..], container)
+                        })
+                        .unwrap_or(None)
                 }
-                IndirectChild::Array(ref mut vec) => {
-                    let idx = index_of(vec, |c| &*c.borrow() as *const Container == cnt as *const Container);
-                    match idx {
-                        Some(idx) => { vec.remove(idx); true }
-                        None => false
+                IndirectPos::Container(&mut IndirectChild::ImplicitTable(ref mut cmap)) => {
+                    cmap.get_mut(&keys[0].escaped)
+                        .map(|child| {
+                            let next = IndirectPos::Container(child);
+                            Document::find_remove_from_parent(next, &keys[1..], container)
+                        })
+                        .unwrap_or(None)
+                }
+                IndirectPos::Container(&mut IndirectChild::ExplicitTable(ref mut candidate)) => {
+                    let mut cmap = &mut candidate.borrow_mut().data;
+                    cmap.indirect
+                        .get_mut(&keys[0].escaped)
+                        .map(|child| {
+                            let next = IndirectPos::Container(child);
+                            Document::find_remove_from_parent(next, &keys[1..], container)
+                        })
+                        .unwrap_or_else(|| {
+                            cmap.direct.kvp_index
+                                .get_mut(&keys[0].escaped)
+                                .map(|child| {
+                                    match child.borrow_mut().value.value {
+                                        Value::InlineTable(ref mut data) => {
+                                            let next = IndirectPos::Value(&mut data.values.indirect);
+                                            Document::find_remove_from_parent(next,
+                                                                              &keys[1..],
+                                                                              container)
+                                        }   
+                                        _ => None
+                                    }
+                                })
+                                .unwrap_or(None)
+                        })
+                }
+                IndirectPos::Container(&mut IndirectChild::Array(ref mut vec)) => {
+                    println!("arr1 {:?}", &keys[0].escaped);
+                    vec.iter_mut()
+                        .map(|candidate| {
+                            let mut cmap = &mut candidate.borrow_mut().data;
+                            cmap.indirect
+                                .get_mut(&keys[0].escaped)
+                                .map(|child| {
+                                    let next = IndirectPos::Container(child);
+                                    Document::find_remove_from_parent(next, &keys[1..], container)
+                                })
+                                .unwrap_or_else(|| {
+                                    cmap.direct.kvp_index
+                                        .get_mut(&keys[0].escaped)
+                                        .map(|child| {
+                                            match child.borrow_mut().value.value {
+                                                Value::InlineTable(ref mut data) => {
+                                                    let next = IndirectPos::Value(&mut data.values.indirect);
+                                                    Document::find_remove_from_parent(next,
+                                                                                      &keys[1..],
+                                                                                      container)
+                                                }   
+                                                _ => None
+                                            }
+                                        })
+                                        .unwrap_or(None)
+                                })
+                        })
+                        .find(Option::is_some)
+                        .unwrap_or(None)
+                }
+            }
+        }
+    }
+
+    fn remove_from_parent<'a>(parent: IndirectPos<'a>,
+                              key: &str,
+                              container: *const Container)
+                              -> Option<*mut HashMap<String, IndirectChild>> {
+        fn remove_if_contains<'a>(parent: &'a mut HashMap<String, IndirectChild>,
+                                  key: &str,
+                                  container: *const Container)
+                                  -> Option<*mut HashMap<String, IndirectChild>> {
+            let removed = match parent.entry(key.to_owned()) {
+                Entry::Occupied(mut entry) => {
+                    let remove = match *entry.get_mut() {
+                        IndirectChild::ExplicitTable(ref found_cnt) => {
+                            &*found_cnt.borrow() as *const _ == container
+                        }
+                        IndirectChild::Array(ref mut vec) => {
+                            let idx_opt = vec.iter()
+                                             .position(|c| &*c.borrow() as *const _ == container);
+                            if let Some(idx) = idx_opt {
+                                vec.remove(idx);
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        _ => false
+                    };
+                    if remove {
+                        entry.remove();
+                        true
+                    } else {
+                        false
                     }
                 }
-                IndirectChild::ImplicitTable(..) => unreachable!()
+                Entry::Vacant(_) => false
+            };
+            if removed {
+                Some(parent as *mut _)
+            } else {
+                None
             }
-        } else {
-            let mut child = map.get_mut(&keys[0].escaped).unwrap();
-            match *child {
-                IndirectChild::ImplicitTable(ref mut map) => {
-                    Document::remove_container(map, &keys[1..], cnt)
-                }
-                IndirectChild::ExplicitTable(ref mut container) => {
-                    let mut container = container.borrow_mut();
-                    Document::remove_container(&mut container.data.indirect,
-                                               &keys[1..],
-                                                  cnt)
-                }
-                IndirectChild::Array(ref mut vec) => {
-                    vec.iter_mut().any(|inner| {
-                        let mut inner = inner.borrow_mut();
-                        Document::remove_container(&mut inner.data.indirect,
-                                                   &keys[1..],
-                                                   cnt)
-                    })
-                }
-            }
-        };
-        let needs_clenup = removed && match map[&keys[0].escaped] {
-            IndirectChild::ImplicitTable(ref map) => map.len() == 0,
-            IndirectChild::Array(ref vec) => vec.len() == 0,
-            IndirectChild::ExplicitTable(..) => false
-        };
-        if needs_clenup {
-            map.remove(&keys[0].escaped);
         }
-        removed
+        match parent {
+            IndirectPos::Container(&mut IndirectChild::ExplicitTable(ref mut candidate))=> {
+                let mut candidate = candidate.borrow_mut();
+                remove_if_contains(&mut candidate.data.indirect, key, container)
+            }
+            IndirectPos::Value(map) => { // E0409
+                remove_if_contains(map, key, container)
+            }
+            IndirectPos::Container(&mut IndirectChild::ImplicitTable(ref mut map)) => {
+                remove_if_contains(map, key, container)
+            }
+            IndirectPos::Container(&mut IndirectChild::Array(ref mut vec)) => {
+                vec.iter_mut()
+                    .map(|candidate| {
+                        let mut candidate = candidate.borrow_mut();
+                        remove_if_contains(&mut candidate.data.indirect, key, container)
+                    })
+                    .find(Option::is_some)
+                    .unwrap_or(None)
+            }
+        }
+    }
+
+    fn unpack<T>(x: Rc<RefCell<T>>) -> T {
+        Rc::try_unwrap(x).ok().unwrap().into_inner()
+    }
+
+    // return value controls what should parent do:
+    // None if not found
+    // Some(true) if found and deleted
+    // Some(false) if found and not deleted, eg. there was a explicit table on the path
+    fn remove_empty_implicits(current: IndirectPos,
+                              source: *mut HashMap<String, IndirectChild>,
+                              path: &[String])
+                              -> Option<bool> {
+        fn remove_inner(cmap: &mut HashMap<String, IndirectChild>,
+                        source: *mut HashMap<String, IndirectChild>,
+                        path: &[String],
+                        explicit: bool)
+                        -> Option<bool> {
+            let remov = cmap.get_mut(&path[0])
+                            .map(|child| {
+                                let next = IndirectPos::Container(child);
+                                Document::remove_empty_implicits(next, source, &path[1..]) 
+                            })
+                            .unwrap_or(None);
+            match remov {
+                Some(true) => { cmap.remove(&path[0]); Some(!explicit) }
+                        opt @ _ => opt
+            }
+        }
+        println!("clean {:?}", &path[0]);
+        if path.len() == 0 {
+            Some(true)
+        } else if path.len() == 1 {
+            let found = match current {
+                IndirectPos::Value(mut cmap) => {
+                    cmap as *mut _ == source
+                }
+                IndirectPos::Container(&mut IndirectChild::ImplicitTable(ref mut cmap)) => {
+                    cmap as *mut _ == source
+                }
+                IndirectPos::Container(&mut IndirectChild::ExplicitTable(ref mut candidate)) => {
+                    let cmap = &mut candidate.borrow_mut().data.indirect;
+                    cmap as *mut _ == source
+                }
+                IndirectPos::Container(&mut IndirectChild::Array(ref mut vec)) => {
+                    println!("rem_impl arr end {:?}", &path[0]);
+                    let idx_opt = vec.iter_mut().position(|candidate| {
+                        let cmap = &mut candidate.borrow_mut().data.indirect;
+                        cmap as *mut _ == source
+                    });
+                    match idx_opt {
+                        Some(idx) => {
+                            vec.remove(idx);
+                            return Some(false)
+                        }
+                        None => return None
+                    }
+                }
+            };
+            if found { Some(true) } else { None }
+        } else {
+            match current {
+                IndirectPos::Value(mut cmap) => {
+                    remove_inner(cmap, source, path, true)
+                }
+                IndirectPos::Container(&mut IndirectChild::ImplicitTable(ref mut cmap)) => {
+                    remove_inner(cmap, source, path, false)
+                }
+                IndirectPos::Container(&mut IndirectChild::ExplicitTable(ref mut candidate)) => {
+                    let mut cmap = &mut candidate.borrow_mut().data;
+                    remove_inner(&mut cmap.indirect, source, path, true)
+                }
+                IndirectPos::Container(&mut IndirectChild::Array(ref mut vec)) => {
+                    let mut result = None;
+                    for ref mut child in vec.iter_mut() {
+                        let mut cmap = &mut child.borrow_mut().data;
+                        let removed = remove_inner(&mut cmap.indirect, source, path, true);
+                        match removed {
+                            Some(true) => { result = Some(true); break; },
+                            Some(false) => result = Some(false),
+                            None => continue
+                        }
+                    }
+                    result
+                }
+            }
+        }
+    }
+
+    fn get_indirect(container: ContainerData) -> HashMap<String, IndirectChild> {
+        drop(container.direct.kvp_index);
+        let mut map = container.indirect;
+        for node in container.direct.kvp_list.into_iter() {
+            let node = Document::unpack(node);
+            if let Value::InlineTable(table)  = node.value.value {
+                let indirect = IndirectChild::ImplicitTable(Document::get_indirect(table.values));
+                map.insert(node.key.escaped, indirect);
+            }
+        }
+        map
     }
 
     pub fn remove_preserve_trivia(&mut self, idx: usize) {
@@ -425,9 +670,8 @@ impl Document {
         } else {
             let real_idx = idx - self.values.kvp_list.len();
             let removed = self.container_list.remove(real_idx);
-            Document::remove_container(&mut self.container_index,
-                                       &removed.borrow().keys.vec,
-                                       &removed.borrow());
+            Document::remove_container(&mut self.container_index, removed);
+            /* FIXME
             let orphaned_trivia = Document::orphaned_trivia_container(removed);
             let containers_count = self.container_list.len();
             if containers_count > 0 && real_idx < containers_count {
@@ -435,7 +679,7 @@ impl Document {
             } else  {
                 self.pass_trivia_to_document(orphaned_trivia);
             }
-
+            */
         }
     }
 
@@ -451,6 +695,7 @@ impl Document {
         buff
     }
 
+    #[allow(dead_code)]
     fn orphaned_trivia_container(container: Rc<RefCell<Container>>) -> String {
         let container = container.borrow();
         let mut buff = String::new();
@@ -1260,7 +1505,9 @@ macro_rules! panic_if_wrong_type {
             match &temp[0].value {
                 &$target => { },
                 val => {
-                    panic!("Element of wrong type inserted into array: expected {}, got: {}", val.type_str(), $err_type)
+                    panic!("Element of wrong type inserted into array: expected {}, got: {}",
+                           val.type_str(),
+                           $err_type)
                 }
             }
         }
@@ -2214,6 +2461,34 @@ mod tests {
                 assert_eq!(Some(0), val.find(&sub.value()));
             }
             assert_eq!(1, doc.len());
+        }
+
+        #[test]
+        fn remove_array() {
+            let mut doc = Document::parse("[[a.b.c.d]]").unwrap();
+            doc.remove(0);
+            assert!(doc.get("a").is_none());
+        }
+
+        #[test]
+        fn remove_nested_indirect() {
+            let mut doc = Document::parse(
+                concat!("[[a.b]]\n",
+                        "c = {}\n",
+                        "[a.b.c.d]\n",
+                        "e = 1\n")).unwrap();
+            doc.remove(1);
+            assert!(doc.get("a").is_some());
+        }
+
+        #[test]
+        fn remove_array_explicit() {
+            let mut doc = Document::parse(
+                concat!("[[a]]\n",
+                        "[a.b]\n",
+                        "e = 1\n")).unwrap();
+            doc.remove(1);
+            assert!(doc.get("a").is_some());
         }
     }
 }

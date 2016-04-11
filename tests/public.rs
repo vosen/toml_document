@@ -1,7 +1,7 @@
 extern crate toml_document;
 
 use toml_document::{Document, ValueRef, DirectChild, IntegerValue};
-use toml_document::{Container, ContainerKind, InlineTable};
+use toml_document::{Container, ContainerKind, InlineTable, EntryRef, TableValue};
 
 // These tests make sure that automatically generated trivias for newly inserted
 // or deleted elements are "nice" (eg. no trailing or leading newlines in the document
@@ -199,4 +199,69 @@ fn pass_trivia_to_document_container() {
     let mut doc = Document::parse(text).unwrap();
     doc.remove_preserve_trivia(0);
     assert_eq!("\n\t   \n", doc.get_trailing_trivia());
+}
+
+#[test]
+fn remove_implicits_from_inline() {
+    let text = concat!("[a]\n",
+                       "b = { x = \"foo\" }\n",
+                       "[a.b.y]\n",
+                       "z = \"bar\"");
+    let mut doc = Document::parse(text).unwrap();
+    doc.remove(1);
+    assert_eq!(1, doc.len());
+    match doc.lookup(["a", "b"].iter().map(|x| *x)).unwrap() {
+        EntryRef::Table(table) => {
+            match table.to_value() {
+                TableValue::Inline(..) => { }
+                _ => panic!()
+            }
+        }
+        _ => panic!()
+    }
+    assert_eq!("[a]\nb = { x = \"foo\" }\n", doc.to_string());
+}
+
+#[test]
+fn lookup_implicit() {
+    let text = concat!("[a]\n",
+                       "b = { x = \"foo\" }\n",
+                       "[a.b.y]\n",
+                       "z = \"bar\"");
+    let mut doc = Document::parse(text).unwrap();
+    match doc.lookup(["a", "b", "y", "z"].iter().map(|x| *x)).unwrap() {
+        EntryRef::String(..) => { }
+        _ => panic!()
+    }
+}
+
+#[test]
+fn remove_inline_from_implicits() {
+    let text = concat!("[a]\n",
+                       "b = { x = \"foo\" }\n",
+                       "[a.b.y]\n",
+                       "z = \"bar\"");
+    let mut doc = Document::parse(text).unwrap();
+    doc.remove(0);
+    assert_eq!(1, doc.len());
+    assert_eq!("[a.b.y]\nz = \"bar\"", doc.to_string());
+    assert_implicit(&doc, &["a"]);
+    assert_implicit(&doc, &["a", "b"]);
+}
+
+fn assert_implicit<'a>(doc: &'a Document, path: &'a [&'a str]) {
+    match doc.lookup(path.iter().map(|x| *x)).unwrap() {
+        EntryRef::Table(table) => {
+            match table.to_value() {
+                TableValue::Implicit => { }
+                TableValue::Inline(..) => {
+                    panic!("[{}]: Expected implicit table, got inline", path.join("."))
+                }
+                TableValue::Explicit(..) => {
+                    panic!("[{}]: Expected implicit table, got explicit", path.join("."))
+                }
+            }
+        }
+        _ => panic!("[{}]: Expected table, got something else", path.join("."))
+    }
 }
