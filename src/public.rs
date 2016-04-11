@@ -125,46 +125,6 @@ impl Document {
         }
     }
 
-    pub fn lookup<'a, I>(&'a self, mut path: I)
-                         -> Option<EntryRef<'a>> where I: Iterator<Item=&'a str> {
-        self.get(path.next().unwrap()).and_then(|entry| Document::lookup_inner(entry, path))
-    }
-
-    fn lookup_inner<'a, I>(val: EntryRef<'a>, mut path: I)
-                           -> Option<EntryRef<'a>> where I: Iterator<Item=&'a str> {
-        match path.next() {
-            None => Some(val),
-            Some(key) => {
-                match val {
-                    EntryRef::Table(table) => {
-                        table.get(key).and_then(|entry| Document::lookup_inner(entry, path))
-                    }
-                    _ => None
-                }
-            }
-        }
-    }
-
-    pub fn lookup_mut<'a, I>(&'a mut self, mut path: I)
-                             -> Option<EntryRefMut<'a>> where I: Iterator<Item=&'a str> {
-        self.get_mut(path.next().unwrap()).and_then(|e| Document::lookup_inner_mut(e, path))
-    }
-
-    fn lookup_inner_mut<'a, I>(val: EntryRefMut<'a>, mut path: I)
-                               -> Option<EntryRefMut<'a>> where I: Iterator<Item=&'a str> {
-        match path.next() {
-            None => Some(val),
-            Some(key) => {
-                match val {
-                    EntryRefMut::Table(table) => {
-                        table.get_mut(key).and_then(|e| Document::lookup_inner_mut(e, path))
-                    }
-                    _ => None
-                }
-            }
-        }
-    }
-
     pub fn len(&self) -> usize {
         self.values.len() + self.container_index.len()
     }
