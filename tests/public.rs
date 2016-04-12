@@ -210,7 +210,7 @@ fn remove_implicits_from_inline() {
     let mut doc = Document::parse(text).unwrap();
     doc.remove(1);
     assert_eq!(1, doc.len());
-    match doc.lookup(["a", "b"].iter().map(|x| *x)).unwrap() {
+    match lookup(&doc, &["a", "b"]).unwrap() {
         EntryRef::Table(table) => {
             match table.to_value() {
                 TableValue::Inline(..) => { }
@@ -229,7 +229,7 @@ fn lookup_implicit() {
                        "[a.b.y]\n",
                        "z = \"bar\"");
     let mut doc = Document::parse(text).unwrap();
-    match doc.lookup(["a", "b", "y", "z"].iter().map(|x| *x)).unwrap() {
+    match lookup(&doc, &["a", "b", "y", "z"]).unwrap() {
         EntryRef::String(..) => { }
         _ => panic!()
     }
@@ -250,7 +250,7 @@ fn remove_inline_from_implicits() {
 }
 
 fn assert_implicit<'a>(doc: &'a Document, path: &'a [&'a str]) {
-    match doc.lookup(path.iter().map(|x| *x)).unwrap() {
+    match lookup(&doc, path).unwrap() {
         EntryRef::Table(table) => {
             match table.to_value() {
                 TableValue::Implicit => { }
@@ -264,4 +264,28 @@ fn assert_implicit<'a>(doc: &'a Document, path: &'a [&'a str]) {
         }
         _ => panic!("[{}]: Expected table, got something else", path.join("."))
     }
+}
+
+fn lookup<'a>(doc: &'a Document, path: &'a [&'a str]) -> Option<EntryRef<'a>> {
+    fn lookup_inner<'a>(entry: EntryRef<'a>, path: &'a [&'a str]) -> Option<EntryRef<'a>> {
+        if path.len() == 0 {
+            Some(entry)
+        } else {
+            println!("loking for {}", path[0]);
+            match entry {
+                EntryRef::Table(table) => {
+                    println!("table.len() = {}", table.len());
+                    for (k, _) in table.iter() {
+                        println!("key: {:?}", k);
+                    }
+                    table.get(path[0]).and_then(|entry| lookup_inner(entry, &path[1..]))
+                }
+                _ => {
+                    None
+                }
+            }
+        }
+    }
+    println!("{}", path[0]);
+    doc.get(path[0]).and_then(|entry| lookup_inner(entry, &path[1..]))
 }

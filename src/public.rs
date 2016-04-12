@@ -415,7 +415,6 @@ impl Document {
                         })
                 }
                 IndirectPos::Container(&mut IndirectChild::Array(ref mut vec)) => {
-                    println!("arr1 {:?}", &keys[0].escaped);
                     vec.iter_mut()
                         .map(|candidate| {
                             let mut cmap = &mut candidate.borrow_mut().data;
@@ -541,7 +540,6 @@ impl Document {
                         opt @ _ => opt
             }
         }
-        println!("clean {:?}", &path[0]);
         if path.len() == 0 {
             Some(true)
         } else if path.len() == 1 {
@@ -557,7 +555,6 @@ impl Document {
                     cmap as *mut _ == source
                 }
                 IndirectPos::Container(&mut IndirectChild::Array(ref mut vec)) => {
-                    println!("rem_impl arr end {:?}", &path[0]);
                     let idx_opt = vec.iter_mut().position(|candidate| {
                         let cmap = &mut candidate.borrow_mut().data.indirect;
                         cmap as *mut _ == source
@@ -630,16 +627,14 @@ impl Document {
         } else {
             let real_idx = idx - self.values.kvp_list.len();
             let removed = self.container_list.remove(real_idx);
+            let orphaned_trivia = Document::orphaned_trivia_container(&removed);
             Document::remove_container(&mut self.container_index, removed);
-            /* FIXME
-            let orphaned_trivia = Document::orphaned_trivia_container(removed);
             let containers_count = self.container_list.len();
             if containers_count > 0 && real_idx < containers_count {
                 self.pass_trivia_to_container(real_idx, orphaned_trivia);
             } else  {
                 self.pass_trivia_to_document(orphaned_trivia);
             }
-            */
         }
     }
 
@@ -656,7 +651,7 @@ impl Document {
     }
 
     #[allow(dead_code)]
-    fn orphaned_trivia_container(container: Rc<RefCell<Container>>) -> String {
+    fn orphaned_trivia_container(container: &Rc<RefCell<Container>>) -> String {
         let container = container.borrow();
         let mut buff = String::new();
         buff.push_str(&container.keys.lead);
@@ -824,14 +819,6 @@ impl ValuesMap {
 
     fn len(&self) -> usize {
         self.kvp_list.len()
-    }
-
-    fn iter_entries<'a>(&'a self)
-                        -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
-        let iter = self.kvp_index
-                       .iter()
-                       .map(direct_cursor);
-        Box::new(iter)
     }
 
     fn iter_children(&self) -> DirectChildren {
@@ -1680,7 +1667,7 @@ impl<'a> TableEntry<'a> {
 
     pub fn iter_children(self) -> DirectChildren<'a> {
         match self.data {
-            Table::Inline(ref tbl) => tbl.data().values.direct.iter_children(),
+            Table::Inline(ref data) => data.iter(),
             Table::Implicit(..) => DirectChildren { iter: None },
             Table::Explicit(ref data) => data.iter_children(),
         }
@@ -1688,7 +1675,7 @@ impl<'a> TableEntry<'a> {
 
     pub fn len(self) -> usize {
         match self.data {
-            Table::Inline(ref data) => data.len(),
+            Table::Inline(ref data) => data.len_all(),
             Table::Implicit(ref map) => implicit_table_len_logical(map),
             Table::Explicit(ref data) => data.len_entries(),
         }
@@ -1879,15 +1866,19 @@ impl InlineTable {
     }
 
     fn get_entry(&self, key: &str) -> Option<EntryRef> {
-        self.data().values.direct.get_entry(key)
+        self.data().values.get(key)
     }
 
     fn get_entry_mut(&mut self, key: &str) -> Option<EntryRefMut> {
-        self.data_mut().values.direct.get_entry_mut(key)
+        self.data_mut().values.get_mut(key)
     }
 
     pub fn len(&self) -> usize {
         self.data().values.direct.len()
+    }
+
+    fn len_all(&self) -> usize {
+        self.data().values.direct.len() + self.data().values.indirect.len()
     }
 
     pub fn iter(&self) -> DirectChildren {
@@ -1900,7 +1891,7 @@ impl InlineTable {
 
     fn iter_entries<'a>(&'a self)
                     -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
-        self.data().values.direct.iter_entries()
+        self.data().values.iter_logical()
     }
 
     pub fn markup(&self) -> &ValueMarkup {
