@@ -11,6 +11,7 @@
 
     <link rel="stylesheet" type="text/css" href="../rustdoc.css">
     <link rel="stylesheet" type="text/css" href="../main.css">
+    
 
     
     
@@ -43,18 +44,19 @@
 
     <section id='main' class="content struct">
 <h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>toml_document</a>::<wbr><a class='struct' href=''>FloatValue</a></span><span class='out-of-band'><span id='render-detail'>
-            <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
-                [<span class='inner'>&#x2212;</span>]
-            </a>
-        </span><a id='src-1109' class='srclink' href='../src/toml_document/src/public.rs.html#18' title='goto source code'>[src]</a></span></h1>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a id='src-1249' class='srclink' href='../src/toml_document/src/public.rs.html#20' title='goto source code'>[src]</a></span></h1>
 <pre class='rust struct'>pub struct FloatValue(_);</pre><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl <a class='struct' href='../toml_document/struct.FloatValue.html' title='toml_document::FloatValue'>FloatValue</a></code></h3><div class='impl-items'><h4 id='method.markup' class='method'><code>fn <a href='#method.markup' class='fnname'>markup</a>(&amp;self) -&gt; &amp;<a class='struct' href='../toml_document/struct.ValueMarkup.html' title='toml_document::ValueMarkup'>ValueMarkup</a></code></h4>
 <h4 id='method.markup_mut' class='method'><code>fn <a href='#method.markup_mut' class='fnname'>markup_mut</a>(&amp;mut self) -&gt; &amp;mut <a class='struct' href='../toml_document/struct.ValueMarkup.html' title='toml_document::ValueMarkup'>ValueMarkup</a></code></h4>
 </div><h3 class='impl'><code>impl <a class='struct' href='../toml_document/struct.FloatValue.html' title='toml_document::FloatValue'>FloatValue</a></code></h3><div class='impl-items'><h4 id='method.get' class='method'><code>fn <a href='#method.get' class='fnname'>get</a>(&amp;self) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.f64.html'>f64</a></code></h4>
 <h4 id='method.set' class='method'><code>fn <a href='#method.set' class='fnname'>set</a>(&amp;mut self, f: <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.f64.html'>f64</a>)</code></h4>
 <h4 id='method.raw' class='method'><code>fn <a href='#method.raw' class='fnname'>raw</a>(&amp;self) -&gt; &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a></code></h4>
 <h4 id='method.to_entry' class='method'><code>fn <a href='#method.to_entry' class='fnname'>to_entry</a>(&amp;self) -&gt; <a class='enum' href='../toml_document/enum.EntryRef.html' title='toml_document::EntryRef'>EntryRef</a></code></h4>
+<h4 id='method.to_entry_mut' class='method'><code>fn <a href='#method.to_entry_mut' class='fnname'>to_entry_mut</a>(&amp;mut self) -&gt; <a class='enum' href='../toml_document/enum.EntryRefMut.html' title='toml_document::EntryRefMut'>EntryRefMut</a></code></h4>
 </div><h2 id='implementations'>Trait Implementations</h2><h3 class='impl'><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.FloatValue.html' title='toml_document::FloatValue'>FloatValue</a></code></h3><div class='impl-items'><h4 id='method.ptr' class='method'><code>fn <a href='../toml_document/trait.InternalNode.html#method.ptr' class='fnname'>ptr</a>(&amp;self) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.usize.html'>usize</a></code></h4>
-</div><h3 class='impl'><code>impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html' title='core::fmt::Display'>Display</a> for <a class='struct' href='../toml_document/struct.FloatValue.html' title='toml_document::FloatValue'>FloatValue</a></code></h3><div class='impl-items'><h4 id='method.fmt' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html#method.fmt' class='fnname'>fmt</a>(&amp;self, f: &amp;mut <a class='struct' href='https://doc.rust-lang.org/nightly/core/fmt/struct.Formatter.html' title='core::fmt::Formatter'>Formatter</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='struct' href='https://doc.rust-lang.org/nightly/core/fmt/struct.Error.html' title='core::fmt::Error'>Error</a>&gt;</code></h4>
+</div><h3 class='impl'><code>impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html' title='core::fmt::Display'>Display</a> for <a class='struct' href='../toml_document/struct.FloatValue.html' title='toml_document::FloatValue'>FloatValue</a></code></h3><div class='impl-items'><h4 id='method.fmt' class='method'><code>fn <a href='https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html#tymethod.fmt' class='fnname'>fmt</a>(&amp;self, f: &amp;mut <a class='struct' href='https://doc.rust-lang.org/nightly/core/fmt/struct.Formatter.html' title='core::fmt::Formatter'>Formatter</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/result/enum.Result.html' title='core::result::Result'>Result</a>&lt;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>, <a class='struct' href='https://doc.rust-lang.org/nightly/core/fmt/struct.Error.html' title='core::fmt::Error'>Error</a>&gt;</code></h4>
 </div></section>
     <section id='search' class="content hidden"></section>
 

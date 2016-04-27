@@ -4,10 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="generator" content="rustdoc">
-    <meta name="description" content="API documentation for the Rust `ContainerKeysMarkup` struct in crate `toml_document`.">
-    <meta name="keywords" content="rust, rustlang, rust-lang, ContainerKeysMarkup">
+    <meta name="description" content="API documentation for the Rust `TableValueMut` enum in crate `toml_document`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, TableValueMut">
 
-    <title>toml_document::ContainerKeysMarkup - Rust</title>
+    <title>toml_document::TableValueMut - Rust</title>
 
     <link rel="stylesheet" type="text/css" href="../rustdoc.css">
     <link rel="stylesheet" type="text/css" href="../main.css">
@@ -28,7 +28,7 @@
 
     <nav class="sidebar">
         
-        <p class='location'><a href='index.html'>toml_document</a></p><script>window.sidebarCurrent = {name: 'ContainerKeysMarkup', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+        <p class='location'><a href='index.html'>toml_document</a></p><script>window.sidebarCurrent = {name: 'TableValueMut', ty: 'enum', relpath: ''};</script><script defer src="sidebar-items.js"></script>
     </nav>
 
     <nav class="sub">
@@ -42,16 +42,18 @@
         </form>
     </nav>
 
-    <section id='main' class="content struct">
-<h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>toml_document</a>::<wbr><a class='struct' href=''>ContainerKeysMarkup</a></span><span class='out-of-band'><span id='render-detail'>
+    <section id='main' class="content enum">
+<h1 class='fqn'><span class='in-band'>Enum <a href='index.html'>toml_document</a>::<wbr><a class='enum' href=''>TableValueMut</a></span><span class='out-of-band'><span id='render-detail'>
                    <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
                        [<span class='inner'>&#x2212;</span>]
                    </a>
-               </span><a id='src-1103' class='srclink' href='../src/toml_document/src/public.rs.html#20' title='goto source code'>[src]</a></span></h1>
-<pre class='rust struct'>pub struct ContainerKeysMarkup(_);</pre><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl <a class='struct' href='../toml_document/struct.ContainerKeysMarkup.html' title='toml_document::ContainerKeysMarkup'>ContainerKeysMarkup</a></code></h3><div class='impl-items'><h4 id='method.get_leading_trivia' class='method'><code>fn <a href='#method.get_leading_trivia' class='fnname'>get_leading_trivia</a>(&amp;self) -&gt; &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a></code></h4>
-<h4 id='method.markup' class='method'><code>fn <a href='#method.markup' class='fnname'>markup</a>(&amp;self) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>&amp;[</a><a class='struct' href='../toml_document/struct.TableKeyMarkup.html' title='toml_document::TableKeyMarkup'>TableKeyMarkup</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>]</a></code></h4>
-<h4 id='method.get_trailing_trivia' class='method'><code>fn <a href='#method.get_trailing_trivia' class='fnname'>get_trailing_trivia</a>(&amp;self) -&gt; &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a></code></h4>
-</div></section>
+               </span><a id='src-1614' class='srclink' href='../src/toml_document/src/public.rs.html#1715-1719' title='goto source code'>[src]</a></span></h1>
+<pre class='rust enum'>pub enum TableValueMut&lt;'a&gt; {
+    Inline(&amp;'a mut <a class='struct' href='../toml_document/struct.InlineTable.html' title='toml_document::InlineTable'>InlineTable</a>),
+    Implicit,
+    Explicit(&amp;'a mut <a class='struct' href='../toml_document/struct.Container.html' title='toml_document::Container'>Container</a>),
+}</pre><h2 class='variants'>Variants</h2>
+<table class='variants_table'><tr><td id='variant.Inline'><code>Inline</code></td><td></td><td></td></tr><tr><td id='variant.Implicit'><code>Implicit</code></td><td></td><td></td></tr><tr><td id='variant.Explicit'><code>Explicit</code></td><td></td><td></td></tr></table></section>
     <section id='search' class="content hidden"></section>
 
     <section class="footer"></section>

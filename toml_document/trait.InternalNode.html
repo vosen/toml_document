@@ -11,6 +11,7 @@
 
     <link rel="stylesheet" type="text/css" href="../rustdoc.css">
     <link rel="stylesheet" type="text/css" href="../main.css">
+    
 
     
     
@@ -43,10 +44,10 @@
 
     <section id='main' class="content trait">
 <h1 class='fqn'><span class='in-band'>Trait <a href='index.html'>toml_document</a>::<wbr><a class='trait' href=''>InternalNode</a></span><span class='out-of-band'><span id='render-detail'>
-            <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
-                [<span class='inner'>&#x2212;</span>]
-            </a>
-        </span><a id='src-1773' class='srclink' href='../src/toml_document/src/public.rs.html#1722-1726' title='goto source code'>[src]</a></span></h1>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a id='src-1998' class='srclink' href='../src/toml_document/src/public.rs.html#2229-2233' title='goto source code'>[src]</a></span></h1>
 <pre class='rust trait'>pub trait InternalNode: <a class='trait' href='https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html' title='core::marker::Sized'>Sized</a> {
     fn <a href='#method.ptr' class='fnname'>ptr</a>(&amp;self) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.usize.html'>usize</a> { ... }
 }</pre>
@@ -55,19 +56,19 @@
         <h3 id='method.ptr' class='method stab '><code>fn <a href='#method.ptr' class='fnname'>ptr</a>(&amp;self) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.usize.html'>usize</a></code></h3></div>
         <h2 id='implementors'>Implementors</h2>
         <ul class='item-list' id='implementors-list'>
-    <li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.DirectChild.html' title='toml_document::DirectChild'>DirectChild</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.StringValue.html' title='toml_document::StringValue'>StringValue</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.IntegerValue.html' title='toml_document::IntegerValue'>IntegerValue</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.FloatValue.html' title='toml_document::FloatValue'>FloatValue</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.BoolValue.html' title='toml_document::BoolValue'>BoolValue</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.DatetimeValue.html' title='toml_document::DatetimeValue'>DatetimeValue</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.InlineArray.html' title='toml_document::InlineArray'>InlineArray</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.InlineTable.html' title='toml_document::InlineTable'>InlineTable</a></code></li>
-<li><code>impl <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='struct' href='../toml_document/struct.Container.html' title='toml_document::Container'>Container</a></code></li>
-<li><code>impl&lt;'a&gt; <a class='trait' href='../toml_document/trait.InternalNode.html' title='toml_document::InternalNode'>InternalNode</a> for <a class='enum' href='../toml_document/enum.ValueRef.html' title='toml_document::ValueRef'>ValueRef</a>&lt;'a&gt;</code></li>
+    <li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.DirectChild.html' title='toml_document::DirectChild'>DirectChild</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.StringValue.html' title='toml_document::StringValue'>StringValue</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.IntegerValue.html' title='toml_document::IntegerValue'>IntegerValue</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.FloatValue.html' title='toml_document::FloatValue'>FloatValue</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.BoolValue.html' title='toml_document::BoolValue'>BoolValue</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.DatetimeValue.html' title='toml_document::DatetimeValue'>DatetimeValue</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.InlineArray.html' title='toml_document::InlineArray'>InlineArray</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.InlineTable.html' title='toml_document::InlineTable'>InlineTable</a></code></li>
+<li><code>impl InternalNode for <a class='struct' href='../toml_document/struct.Container.html' title='toml_document::Container'>Container</a></code></li>
+<li><code>impl&lt;'a&gt; InternalNode for <a class='enum' href='../toml_document/enum.ValueRef.html' title='toml_document::ValueRef'>ValueRef</a>&lt;'a&gt;</code></li>
 </ul><script type="text/javascript" async
-                              src="../implementors/toml_document/trait.InternalNode.js">
-                      </script></section>
+                         src="../implementors/toml_document/trait.InternalNode.js">
+                 </script></section>
     <section id='search' class="content hidden"></section>
 
     <section class="footer"></section>

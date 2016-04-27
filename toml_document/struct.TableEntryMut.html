@@ -4,10 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="generator" content="rustdoc">
-    <meta name="description" content="API documentation for the Rust `ContainerKeysMarkup` struct in crate `toml_document`.">
-    <meta name="keywords" content="rust, rustlang, rust-lang, ContainerKeysMarkup">
+    <meta name="description" content="API documentation for the Rust `TableEntryMut` struct in crate `toml_document`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, TableEntryMut">
 
-    <title>toml_document::ContainerKeysMarkup - Rust</title>
+    <title>toml_document::TableEntryMut - Rust</title>
 
     <link rel="stylesheet" type="text/css" href="../rustdoc.css">
     <link rel="stylesheet" type="text/css" href="../main.css">
@@ -28,7 +28,7 @@
 
     <nav class="sidebar">
         
-        <p class='location'><a href='index.html'>toml_document</a></p><script>window.sidebarCurrent = {name: 'ContainerKeysMarkup', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+        <p class='location'><a href='index.html'>toml_document</a></p><script>window.sidebarCurrent = {name: 'TableEntryMut', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
     </nav>
 
     <nav class="sub">
@@ -43,14 +43,17 @@
     </nav>
 
     <section id='main' class="content struct">
-<h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>toml_document</a>::<wbr><a class='struct' href=''>ContainerKeysMarkup</a></span><span class='out-of-band'><span id='render-detail'>
+<h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>toml_document</a>::<wbr><a class='struct' href=''>TableEntryMut</a></span><span class='out-of-band'><span id='render-detail'>
                    <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
                        [<span class='inner'>&#x2212;</span>]
                    </a>
-               </span><a id='src-1103' class='srclink' href='../src/toml_document/src/public.rs.html#20' title='goto source code'>[src]</a></span></h1>
-<pre class='rust struct'>pub struct ContainerKeysMarkup(_);</pre><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl <a class='struct' href='../toml_document/struct.ContainerKeysMarkup.html' title='toml_document::ContainerKeysMarkup'>ContainerKeysMarkup</a></code></h3><div class='impl-items'><h4 id='method.get_leading_trivia' class='method'><code>fn <a href='#method.get_leading_trivia' class='fnname'>get_leading_trivia</a>(&amp;self) -&gt; &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a></code></h4>
-<h4 id='method.markup' class='method'><code>fn <a href='#method.markup' class='fnname'>markup</a>(&amp;self) -&gt; <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>&amp;[</a><a class='struct' href='../toml_document/struct.TableKeyMarkup.html' title='toml_document::TableKeyMarkup'>TableKeyMarkup</a><a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.slice.html'>]</a></code></h4>
-<h4 id='method.get_trailing_trivia' class='method'><code>fn <a href='#method.get_trailing_trivia' class='fnname'>get_trailing_trivia</a>(&amp;self) -&gt; &amp;<a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a></code></h4>
+               </span><a id='src-1603' class='srclink' href='../src/toml_document/src/public.rs.html#1705-1707' title='goto source code'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct TableEntryMut&lt;'a&gt; {
+    // some fields omitted
+}</pre><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl&lt;'a&gt; <a class='struct' href='../toml_document/struct.TableEntryMut.html' title='toml_document::TableEntryMut'>TableEntryMut</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.get_mut' class='method'><code>fn <a href='#method.get_mut' class='fnname'>get_mut</a>(self, key: &amp;'a <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>) -&gt; <a class='enum' href='https://doc.rust-lang.org/nightly/core/option/enum.Option.html' title='core::option::Option'>Option</a>&lt;<a class='enum' href='../toml_document/enum.EntryRefMut.html' title='toml_document::EntryRefMut'>EntryRefMut</a>&gt;</code></h4>
+<h4 id='method.unmut' class='method'><code>fn <a href='#method.unmut' class='fnname'>unmut</a>(&amp;'a self) -&gt; <a class='struct' href='../toml_document/struct.TableEntry.html' title='toml_document::TableEntry'>TableEntry</a>&lt;'a&gt;</code></h4>
+<h4 id='method.to_value' class='method'><code>fn <a href='#method.to_value' class='fnname'>to_value</a>(self) -&gt; <a class='enum' href='../toml_document/enum.TableValueMut.html' title='toml_document::TableValueMut'>TableValueMut</a>&lt;'a&gt;</code></h4>
+<h4 id='method.to_entry' class='method'><code>fn <a href='#method.to_entry' class='fnname'>to_entry</a>(self) -&gt; <a class='enum' href='../toml_document/enum.EntryRefMut.html' title='toml_document::EntryRefMut'>EntryRefMut</a>&lt;'a&gt;</code></h4>
 </div></section>
     <section id='search' class="content hidden"></section>
 
