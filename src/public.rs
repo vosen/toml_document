@@ -138,6 +138,10 @@ impl Document {
         self.values.get_child(idx)
     }
 
+    pub fn get_child_mut(&mut self, idx: usize) -> &mut DirectChild {
+        self.values.get_child_mut(idx)
+    }
+
     pub fn len_children(&self) -> usize {
         self.values.len()
     }
@@ -148,6 +152,10 @@ impl Document {
 
     pub fn get_container(&self, idx: usize) -> &Container {
         unsafe { Container::new(&self.container_list[idx]) }
+    }
+
+    pub fn get_container_mut(&mut self, idx: usize) -> &mut Container {
+        unsafe { Container::new_mut(&mut self.container_list[idx]) }
     }
 
     pub fn len_containers(&self) -> usize {
@@ -722,6 +730,10 @@ impl DirectChild {
         DirectChild::new(transmute_lifetime(&*src.borrow()))
     }
 
+    unsafe fn new_rc_mut(src: &mut Rc<RefCell<ValueNode>>) -> &mut DirectChild {
+        DirectChild::new_mut(transmute_lifetime_mut(&mut *src.borrow_mut()))
+    }
+
     pub fn key(&self) -> &KeyMarkup {
         &KeyMarkup::new(&self.0.key)
     }
@@ -815,6 +827,10 @@ impl ValuesMap {
 
     fn get_child(&self, idx: usize) -> &DirectChild {
         unsafe { DirectChild::new_rc(&self.kvp_list[idx]) }
+    }
+
+    fn get_child_mut(&mut self, idx: usize) -> &mut DirectChild {
+        unsafe { DirectChild::new_rc_mut(&mut self.kvp_list[idx]) }
     }
 
     fn len(&self) -> usize {
@@ -1029,6 +1045,10 @@ impl Container {
         transmute_lifetime(&*src.borrow())
     }
 
+    unsafe fn new_mut(src: &Rc<RefCell<Container>>) -> &mut Container {
+        transmute_lifetime_mut(&mut *src.borrow_mut())
+    }
+
     pub fn kind(&self) -> ContainerKind {
         self.kind
     }
@@ -1052,6 +1072,10 @@ impl Container {
 
     pub fn get_child(&self, idx: usize) -> &DirectChild {
         self.data.direct.get_child(idx)
+    }
+
+    pub fn get_child_mut(&mut self, idx: usize) -> &mut DirectChild {
+        self.data.direct.get_child_mut(idx)
     }
 
     pub fn len_children(&self) -> usize {
