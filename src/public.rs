@@ -1092,6 +1092,9 @@ impl Container {
 
     fn adjust_trivia(&mut self, idx: usize) {
         // TODO: Mark last container
+        if idx == 0 && self.data.direct.len() == 1 && self.keys.trail.len() == 0 {
+            self.keys.trail = "\n".to_owned();
+        }
         self.data.direct.get_at_mut(idx).value.markup.trail = "\n".to_owned();
     }
 

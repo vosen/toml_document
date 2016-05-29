@@ -147,6 +147,7 @@ impl Display for Container {
         } else {
             try!(write!(f, "]"));
         }
+        try!(write!(f, "{}", self.keys().get_trailing_trivia()));
         fmt_join(f, self.iter_children(), "")
     }
 }

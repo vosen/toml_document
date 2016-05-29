@@ -3,6 +3,8 @@ extern crate toml_document;
 use toml_document::{Document, ValueRef, DirectChild, IntegerValue};
 use toml_document::{Container, ContainerKind, InlineTable, EntryRef, TableValue};
 
+use std::iter;
+
 // These tests make sure that automatically generated trivias for newly inserted
 // or deleted elements are "nice" (eg. no trailing or leading newlines in the document
 
@@ -183,6 +185,18 @@ fn remove_last_container() {
     doc.remove(2);
     assert_eq!(2, doc.len_containers());
     assert_eq!("\n\t", doc.get_container(1).keys().get_leading_trivia());
+}
+
+#[test]
+fn add_to_empty_container() {
+    let text = "[package]";
+    let mut doc = Document::parse(text).unwrap();
+    {
+        let container = doc.insert_container(1, iter::once("test"), ContainerKind::ArrayMember);
+        container.insert_string(0, "name", "bar");
+    }
+    assert_eq!("\n", doc.get_container(1).keys().get_trailing_trivia());
+    assert_eq!("[package]\n[[test]]\nname = \"bar\"\n", doc.to_string());
 }
 
 #[test]
