@@ -242,7 +242,7 @@ fn lookup_implicit() {
                        "b = { x = \"foo\" }\n",
                        "[a.b.y]\n",
                        "z = \"bar\"");
-    let mut doc = Document::parse(text).unwrap();
+    let doc = Document::parse(text).unwrap();
     match lookup(&doc, &["a", "b", "y", "z"]).unwrap() {
         EntryRef::String(..) => { }
         _ => panic!()
@@ -302,4 +302,56 @@ fn lookup<'a>(doc: &'a Document, path: &'a [&'a str]) -> Option<EntryRef<'a>> {
     }
     println!("{}", path[0]);
     doc.get(path[0]).and_then(|entry| lookup_inner(entry, &path[1..]))
+}
+
+#[test]
+fn insert_array_before_end() {
+    let text = "[[foo]]\nindex = 1";
+    let mut doc = Document::parse(text).unwrap();
+    {
+        let container = doc.insert_container(0, iter::once("foo"), ContainerKind::ArrayMember);
+        container.insert_integer(0, "index", 0);
+    }
+    if let Some(EntryRef::Array(array)) = doc.get("foo") {
+        if let EntryRef::Table(table) = array.get(0) {
+            if let Some(EntryRef::Integer(value)) = table.get("index") {
+                assert_eq!(0, value.get());
+            } else {
+                panic!()
+            }
+        } else {
+            panic!()
+        }
+    } else {
+        panic!()
+    }
+}
+
+#[test]
+fn insert_table_into_existing_array() {
+    let text = "[[foo]]\n[[foo]]";
+    let mut doc = Document::parse(text).unwrap();
+    {
+        let container = doc.insert_container(1,
+                                             ["foo", "bar"].iter().map(|x| *x),
+                                             ContainerKind::Table);
+        container.insert_integer(0, "index", 0);
+    }
+    if let Some(EntryRef::Array(array)) = doc.get("foo") {
+        if let EntryRef::Table(table) = array.get(0) {
+            if let Some(EntryRef::Table(subtable)) = table.get("bar") {
+                if let Some(EntryRef::Integer(value)) = subtable.get("index") {
+                    assert_eq!(0, value.get());
+                } else {
+                    panic!()
+                }
+            } else {
+                panic!()
+            }
+        } else {
+            panic!()
+        }
+    } else {
+        panic!()
+    }
 }
