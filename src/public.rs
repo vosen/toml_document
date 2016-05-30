@@ -980,8 +980,10 @@ impl ValueNode {
     }
 
     fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> EntryRefMut<'a> {
-        match r.borrow().value.value  {
+        let val_ref = r.borrow();
+        match val_ref.value.value {
             Value::String(..) => {
+                drop(val_ref);
                 EntryRefMut::String(
                     StringValue::new_mut(
                         &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
@@ -989,6 +991,7 @@ impl ValueNode {
                 )
             }
             Value::Integer{..} => {
+                drop(val_ref);
                 EntryRefMut::Integer(
                     IntegerValue::new_mut(
                         &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
@@ -996,6 +999,7 @@ impl ValueNode {
                 )
             }
             Value::Float{..} => {
+                drop(val_ref);
                 EntryRefMut::Float(
                     FloatValue::new_mut(
                         &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
@@ -1003,6 +1007,7 @@ impl ValueNode {
                 )
             }
             Value::Boolean(..) => {
+                drop(val_ref);
                 EntryRefMut::Boolean(
                     BoolValue::new_mut(
                         &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
@@ -1010,6 +1015,7 @@ impl ValueNode {
                 )
             }
             Value::Datetime(..) => {
+                drop(val_ref);
                 EntryRefMut::Datetime(
                     DatetimeValue::new_mut(
                         &mut unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) }.value
@@ -1017,6 +1023,7 @@ impl ValueNode {
                 )
             }
             Value::InlineArray(..) => {
+                drop(val_ref);
                 let value_wrapper = unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) };                
                 EntryRefMut::Array(
                     ArrayEntryMut {
@@ -1027,6 +1034,7 @@ impl ValueNode {
                 )
             }
             Value::InlineTable(..) => {
+                drop(val_ref);
                 let value_wrapper = unsafe { transmute_lifetime_mut(&mut *r.borrow_mut()) };                
                 EntryRefMut::Table(
                     TableEntryMut {
