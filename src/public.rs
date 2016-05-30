@@ -1538,7 +1538,7 @@ impl InlineArray {
         if idx == self.data().values.len() {
             value.markup.trail = " ".to_string();
         };
-        self.data_mut().values.insert(idx, value);
+        self.data_mut().values.insert(idx, Box::new(value));
     }
 
     pub fn insert_string<S:Into<String>>(&mut self, idx: usize, value: S) 
@@ -1605,7 +1605,10 @@ impl InlineArray {
         let token = node.ptr();
         self.data().values
                    .iter()
-                   .position(|vn| &vn as *const _ as usize == token)
+                   .position(|vn| {
+                        let ptr = &vn as &FormattedValue as *const _ as usize;
+                        ptr == token
+                    })
     }
 
     pub fn to_entry(&self) -> EntryRef {
@@ -1653,14 +1656,14 @@ impl InlineArrayMarkup {
 }
 
 pub struct Values<'a> {
-    iter: slice::Iter<'a, FormattedValue>
+    iter: slice::Iter<'a, Box<FormattedValue>>
 }
 
 impl<'a> Iterator for Values<'a> {
     type Item = ValueRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(ValueRef::new)
+        self.iter.next().map(|v| ValueRef::new(v))
     }
 }
 

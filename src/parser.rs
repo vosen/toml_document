@@ -757,7 +757,7 @@ impl<'a> Parser<'a> {
                 type_str = Some(expected);
                 value.markup.lead = lead;
                 value.markup.trail = self.eat_trivia();
-                ret.push(value);
+                ret.push(Box::new(value));
             }
 
             // Look for a comma. If we don't find one we're done

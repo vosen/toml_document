@@ -281,7 +281,7 @@ enum Value {
 }
 
 struct InlineArrayData {
-    values: Vec<FormattedValue>,
+    values: Vec<Box<FormattedValue>>,
     comma_trail: String
 }
 
