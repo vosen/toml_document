@@ -741,6 +741,10 @@ impl DirectChild {
     pub fn value(&self) -> ValueRef {
         ValueRef::new(&self.0.value)
     }
+
+    pub fn value_mut(&mut self) -> ValueRefMut {
+        ValueRefMut::new(&mut self.0.value)
+    }
 }
 
 #[derive(Clone,Copy)]
@@ -802,6 +806,68 @@ impl<'a> ValueRef<'a> {
                     }
                 )
             },
+        }
+    }
+}
+
+pub enum ValueRefMut<'a> {
+    String(&'a mut StringValue),
+    Integer(&'a mut IntegerValue),
+    Float(&'a mut FloatValue),
+    Boolean(&'a mut BoolValue),
+    Datetime(&'a mut DatetimeValue),
+    Array(&'a mut InlineArray),
+    Table(&'a mut InlineTable)
+}
+
+impl<'a> ValueRefMut<'a> {
+    fn new(src: &mut FormattedValue) -> ValueRefMut {
+        match src.value {
+            Value::String(..) => ValueRefMut::String(
+                StringValue::new_mut(src)
+            ),
+            Value::Integer{..} => ValueRefMut::Integer(
+                IntegerValue::new_mut(src)
+            ),
+            Value::Float{..} => ValueRefMut::Float(
+                FloatValue::new_mut(src)
+            ),
+            Value::Boolean(..) => ValueRefMut::Boolean(
+                BoolValue::new_mut(src)
+            ),
+            Value::Datetime(..) => ValueRefMut::Datetime(
+                DatetimeValue::new_mut(src)
+            ),
+            Value::InlineArray(..) => ValueRefMut::Array(
+                InlineArray::new_mut(src)
+            ),
+            Value::InlineTable(..) => ValueRefMut::Table(
+                InlineTable::new_mut(src)
+            ),
+        }
+    }
+
+    pub fn unmut(&'a self) -> ValueRef<'a> {
+        match self {
+            &ValueRefMut::String(ref val) => ValueRef::String(val),
+            &ValueRefMut::Integer(ref val) => ValueRef::Integer(val),
+            &ValueRefMut::Float(ref val) => ValueRef::Float(val),
+            &ValueRefMut::Boolean(ref val) => ValueRef::Boolean(val),
+            &ValueRefMut::Datetime(ref val) => ValueRef::Datetime(val),
+            &ValueRefMut::Array(ref arr) => ValueRef::Array(arr),
+            &ValueRefMut::Table(ref table) => ValueRef::Table(table),
+        }
+    }
+
+    pub fn to_entry(self) -> EntryRefMut<'a> {
+        match self {
+            ValueRefMut::String(val) => val.to_entry_mut(),
+            ValueRefMut::Integer(val) => val.to_entry_mut(),
+            ValueRefMut::Float(val) => val.to_entry_mut(),
+            ValueRefMut::Boolean(val) => val.to_entry_mut(),
+            ValueRefMut::Datetime(val) => val.to_entry_mut(),
+            ValueRefMut::Array(arr) => arr.to_entry_mut(),
+            ValueRefMut::Table(table) => table.to_entry_mut().to_entry(),
         }
     }
 }
@@ -1525,6 +1591,10 @@ impl InlineArray {
 
     pub fn get(&self, idx: usize) -> ValueRef {
         ValueRef::new(&self.data().values[idx])
+    }
+
+    pub fn get_mut(&mut self, idx: usize) -> ValueRefMut {
+        ValueRefMut::new(&mut self.data_mut().values[idx])
     }
 
     pub fn iter(&self) -> Values {
