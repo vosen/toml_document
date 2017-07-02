@@ -1,4 +1,4 @@
-use std::fmt::{Display, Error, Formatter, Write};
+use std::fmt::{Display, Error, Formatter};
 
 use super::{Document, KeyMarkup, StringValue, TableKeyMarkup, BoolValue};
 use super::{ValueRef, Container, DirectChild, InlineArray, FloatValue};
