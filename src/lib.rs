@@ -54,6 +54,7 @@ fn eat_before_newline(mut chars: Peekable<Chars>) -> Peekable<Chars> {
     chars
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(should_assert_eq))]
 fn eat_newline<'a>(mut chars: Peekable<Chars<'a>>,
                error: &'static str) -> Peekable<Chars<'a>> {
     match chars.next().unwrap_or_else(|| panic!(error)) {
@@ -115,6 +116,7 @@ impl<'a> TraversalPosition<'a> {
 //         +
 //         |- trail
 //         +
+#[derive(Default)]
 pub struct Document {
     values: ValuesMap,
     // List of containers: tables and arrays that are present in the document.
@@ -143,6 +145,7 @@ impl Document {
 //         +
 //         |- kvp_list[1]
 //  x="y"  +
+#[derive(Default)]
 struct ValuesMap {
     // key-value pairs stored in the order they appear in a document
     kvp_list: Vec<Rc<RefCell<ValueNode>>>,
@@ -152,10 +155,7 @@ struct ValuesMap {
 
 impl ValuesMap {
     fn new() -> ValuesMap {
-        ValuesMap {
-            kvp_list: Vec::new(),
-            kvp_index: HashMap::new(),
-        }
+        Default::default()
     }
 
     fn insert(&mut self, key: FormattedKey, value: FormattedValue) -> bool {
@@ -244,6 +244,7 @@ impl StringData {
         self.escaped = s;
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(panic_params))]
     fn unescape(s: &str) -> String {
         let mut buffer = String::with_capacity(s.len() + 2);
         buffer.push('"');
@@ -256,7 +257,7 @@ impl StringData {
                 0x0D => buffer.push_str(r#"\r"#),
                 0x22 => buffer.push_str(r#"\""#),
                 0x5C => buffer.push_str(r#"\\"#),
-                c if c <= 0x1F => drop(write!(buffer, r#"\u{:04X}"#, c)),
+                c if c <= 0x1F => assert!(write!(buffer, r#"\u{:04X}"#, c).is_ok()),
                 _ => buffer.push(c as char)
             }
         }
@@ -350,6 +351,7 @@ impl IndirectChild {
         else { panic!() }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     fn to_implicit(self) -> HashMap<String, IndirectChild> {
         if let IndirectChild::ImplicitTable(m) = self { m }
         else { panic!() }

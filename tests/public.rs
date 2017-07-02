@@ -264,7 +264,7 @@ fn remove_inline_from_implicits() {
 }
 
 fn assert_implicit<'a>(doc: &'a Document, path: &'a [&'a str]) {
-    match lookup(&doc, path).unwrap() {
+    match lookup(doc, path).unwrap() {
         EntryRef::Table(table) => {
             match table.to_value() {
                 TableValue::Implicit => { }
@@ -282,7 +282,7 @@ fn assert_implicit<'a>(doc: &'a Document, path: &'a [&'a str]) {
 
 fn lookup<'a>(doc: &'a Document, path: &'a [&'a str]) -> Option<EntryRef<'a>> {
     fn lookup_inner<'a>(entry: EntryRef<'a>, path: &'a [&'a str]) -> Option<EntryRef<'a>> {
-        if path.len() == 0 {
+        if path.is_empty() {
             Some(entry)
         } else {
             println!("loking for {}", path[0]);
