@@ -1,9 +1,9 @@
-extern crate rustc_serialize;
+extern crate serde_json;
 extern crate toml_document;
 
-use std::collections::BTreeMap;
-
-use rustc_serialize::json::Json;
+use serde_json::Value as Json;
+use serde_json::Map as JsonMap;
+use serde_json::to_string_pretty;
 
 use toml_document::{EntryRef, Document};
 
@@ -11,7 +11,7 @@ type LogicalValues<'a> = Box<Iterator<Item = (&'a str, EntryRef<'a>)> + 'a>;
 
 fn val_to_json((key, value): (&str, EntryRef)) -> (String, Json) {
   fn typed_json(s: &str, json: Json) -> Json {
-    let mut map = BTreeMap::new();
+    let mut map = JsonMap::new();
         map.insert(format!("{}", "type"), Json::String(format!("{}", s)));
         map.insert(format!("{}", "value"), json);
         Json::Object(map)
@@ -69,12 +69,12 @@ fn run(toml: &str, json: &str) {
     let doc = doc.unwrap();
 
     // compare logical structure with jsons
-    let json = Json::from_str(json).unwrap();
+    let json: Json = serde_json::from_str(json).unwrap();
     let toml_json = to_json(doc.iter());
     assert!(json == toml_json,
             "expected\n{}\ngot\n{}\n",
-            json.pretty(),
-            toml_json.pretty());
+            to_string_pretty(&json).unwrap(),
+            to_string_pretty(&toml_json).unwrap());
 
     // check indexability of children
     for (idx, child) in doc.iter_children().enumerate() {
