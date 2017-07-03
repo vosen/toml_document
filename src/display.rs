@@ -1,11 +1,11 @@
-use std::fmt::{Display, Error, Formatter, Write};
+use std::fmt::{Display, Error, Formatter};
 
 use super::{Document, KeyMarkup, StringValue, TableKeyMarkup, BoolValue};
 use super::{ValueRef, Container, DirectChild, InlineArray, FloatValue};
 use super::{ContainerKind, InlineTable, IntegerValue, DatetimeValue, ValueMarkup};
 
-fn fmt_join<'a, T, I>(f: &mut Formatter, values: I, sep: &str)
-                      -> Result<(), Error> where T: Display, I:Iterator<Item=T>{
+fn fmt_join<T, I>(f: &mut Formatter, values: I, sep: &str)
+                  -> Result<(), Error> where T: Display, I:Iterator<Item=T>{
     let mut values = values.peekable();
     loop {
         let value = values.next();
@@ -22,7 +22,7 @@ fn fmt_join<'a, T, I>(f: &mut Formatter, values: I, sep: &str)
     Ok(())
 }
 
-fn fmt_with_markup<T>(f: &mut Formatter, value: T, markup: &ValueMarkup)
+fn fmt_with_markup<T>(f: &mut Formatter, value: &T, markup: &ValueMarkup)
                        -> Result<(), Error> where T: Display {
 
     write!(f,
@@ -62,31 +62,31 @@ impl<'a> Display for ValueRef<'a> {
 
 impl Display for StringValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        fmt_with_markup(f, self.raw(), self.markup())
+        fmt_with_markup(f, &self.raw(), self.markup())
     }
 }
 
 impl Display for IntegerValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        fmt_with_markup(f, self.raw(), self.markup())
+        fmt_with_markup(f, &self.raw(), self.markup())
     }
 }
 
 impl Display for BoolValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        fmt_with_markup(f, self.get(), self.markup())
+        fmt_with_markup(f, &self.get(), self.markup())
     }
 }
 
 impl Display for DatetimeValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        fmt_with_markup(f, self.get(), self.markup())
+        fmt_with_markup(f, &self.get(), self.markup())
     }
 }
 
 impl Display for FloatValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        fmt_with_markup(f, self.raw(), self.markup())
+        fmt_with_markup(f, &self.raw(), self.markup())
     }
 }
 

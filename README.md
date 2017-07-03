@@ -1,6 +1,8 @@
 # toml_document
 
-[![Build Status](https://travis-ci.org/vosen/toml_document.svg?branch=master)](https://travis-ci.org/vosen/toml_document)
+[![Build Status](https://img.shields.io/travis/ordian/toml_document/master.svg?label=linux%20%26%20osx)](
+https://travis-ci.org/ordian/toml_document)
+[![Build Status](https://img.shields.io/appveyor/ci/ordian/toml_document/master.svg?label=windows)](https://ci.appveyor.com/project/ordian/toml-document/branch/master)
 
 [Documentation](http://vosen.github.io/toml_document/toml_document)
 

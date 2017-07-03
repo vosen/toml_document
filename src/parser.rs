@@ -70,11 +70,11 @@ impl<'a> Parser<'a> {
             }
             cur += line.len() + 1;
         }
-        return (self.input.lines().count(), 0)
+        (self.input.lines().count(), 0)
     }
 
     fn next_pos(&self) -> usize {
-        self.cur.clone().next().map(|p| p.0).unwrap_or(self.input.len())
+        self.cur.clone().next().map(|p| p.0).unwrap_or_else(|| self.input.len())
     }
 
     // Returns true and consumes the next character if it matches `ch`,
@@ -88,14 +88,14 @@ impl<'a> Parser<'a> {
 
     // Peeks ahead `n` characters
     fn peek(&self, n: usize) -> Option<(usize, char)> {
-        self.cur.clone().skip(n).next()
+        self.cur.clone().nth(n)
     }
 
     fn expect(&mut self, ch: char) -> bool {
         if self.eat(ch) { return true }
         let mut it = self.cur.clone();
-        let lo = it.next().map(|p| p.0).unwrap_or(self.input.len());
-        let hi = it.next().map(|p| p.0).unwrap_or(self.input.len());
+        let lo = it.next().map(|p| p.0).unwrap_or_else(|| self.input.len());
+        let hi = it.next().map(|p| p.0).unwrap_or_else(|| self.input.len());
         self.errors.push(ParserError {
             lo: lo,
             hi: hi,
@@ -210,7 +210,7 @@ impl<'a> Parser<'a> {
                     }
                     if !self.expect('.') { return None }
                 }
-                if keys.len() == 0 { return None }
+                if keys.is_empty() { return None }
 
                 // Build the section table
                 let mut container = ContainerData::new();
@@ -235,11 +235,11 @@ impl<'a> Parser<'a> {
                     let trail = self.eat_to_newline();
                     ret.container_list[cnt_len].borrow_mut().keys.trail = trail;
                 }
-            } else {
-                if !self.values(&mut ret.values) { return None }
+            } else if !self.values(&mut ret.values) {
+                 return None;
             }
         }
-        if self.errors.len() > 0 {
+        if !self.errors.is_empty() {
             None
         } else {
             ret.trail = self.take_trivia();
@@ -257,7 +257,7 @@ impl<'a> Parser<'a> {
             escaped
         } else {
             let mut ret = String::new();
-            while let Some((_, ch)) = self.cur.clone().next() {
+            for (_, ch) in self.cur.clone() {
                 match ch {
                     'a' ... 'z' |
                     'A' ... 'Z' |
@@ -270,11 +270,11 @@ impl<'a> Parser<'a> {
             Some(ret)
         };
         match key {
-            Some(ref name) if name.len() == 0 => {
+            Some(ref name) if name.is_empty() => {
                 self.errors.push(ParserError {
                     lo: start,
                     hi: start,
-                    desc: format!("expected a key but found an empty string"),
+                    desc: "expected a key but found an empty string".into(),
                 });
                 None
             }
@@ -289,9 +289,8 @@ impl<'a> Parser<'a> {
         loop {
             self.skip_trivia();
             match self.peek(0) {
-                Some((_, '[')) => return true,
+                Some((_, '[')) | None => return true,
                 Some(..) => {}
-                None => return true,
             }
             let key_lo = self.next_pos();
             let key = match self.key_name() {
@@ -324,12 +323,12 @@ impl<'a> Parser<'a> {
             Some((pos, ch)) if is_digit(ch) => self.number_or_datetime(pos),
             _ => {
                 let mut it = self.cur.clone();
-                let lo = it.next().map(|p| p.0).unwrap_or(self.input.len());
-                let hi = it.next().map(|p| p.0).unwrap_or(self.input.len());
+                let lo = it.next().map(|p| p.0).unwrap_or_else(|| self.input.len());
+                let hi = it.next().map(|p| p.0).unwrap_or_else(|| self.input.len());
                 self.errors.push(ParserError {
                     lo: lo,
                     hi: hi,
-                    desc: format!("expected a value"),
+                    desc: "expected a value".into(),
                 });
                 return None
             }
@@ -398,7 +397,7 @@ impl<'a> Parser<'a> {
                     self.errors.push(ParserError {
                         lo: start,
                         hi: self.input.len(),
-                        desc: format!("unterminated string literal"),
+                        desc: "unterminated string literal".into(),
                     });
                     return None
                 }
@@ -427,9 +426,9 @@ impl<'a> Parser<'a> {
                     } else {
                         "invalid"
                     };
-                    if let Some(n) = u32::from_str_radix(num, 16).ok() {
+                    if let Ok(n) = u32::from_str_radix(num, 16) {
                         if let Some(c) = char::from_u32(n) {
-                            me.cur.by_ref().skip(len - 1).next();
+                            me.cur.by_ref().nth(len - 1);
                             return Some(c)
                         } else {
                             me.errors.push(ParserError {
@@ -464,7 +463,7 @@ impl<'a> Parser<'a> {
                     me.errors.push(ParserError {
                         lo: pos,
                         hi: pos + 1,
-                        desc: format!("unterminated escape sequence"),
+                        desc: "unterminated escape sequence".into(),
                     });
                     None
                 }
@@ -497,7 +496,7 @@ impl<'a> Parser<'a> {
                 self.errors.push(ParserError {
                     lo: start,
                     hi: next,
-                    desc: format!("literal strings cannot contain newlines"),
+                    desc: "literal strings cannot contain newlines".into(),
                 });
                 return None
             }
@@ -514,18 +513,18 @@ impl<'a> Parser<'a> {
                     self.errors.push(ParserError {
                         lo: start,
                         hi: self.input.len(),
-                        desc: format!("unterminated string literal"),
+                        desc: "unterminated string literal".into(),
                     });
                     return None
                 }
             }
         }
         let raw = if multiline { 
-            format!("'''{}{}'''", newline.unwrap_or(String::new()), ret)
+            format!("'''{}{}'''", newline.unwrap_or_default(), ret)
         } else {
             format!("'{}'", ret)
         };
-        return Some(DocValue::String(StringData { raw: raw, escaped: ret }));
+        Some(DocValue::String(StringData { raw: raw, escaped: ret }))
     }
 
     fn number_or_datetime(&mut self, start: usize) -> Option<DocValue> {
@@ -545,8 +544,8 @@ impl<'a> Parser<'a> {
         };
         let end = self.next_pos();
         let input = &self.input[start..end];
-        let ret = if !is_float && !input.starts_with("+") &&
-                     !input.starts_with("-") && self.eat('-') {
+        let ret = if !is_float && !input.starts_with('+') &&
+                     !input.starts_with('-') && self.eat('-') {
             self.datetime(start, end + 1)
         } else {
             let raw_range = input;
@@ -571,10 +570,10 @@ impl<'a> Parser<'a> {
             self.errors.push(ParserError {
                 lo: start,
                 hi: end,
-                desc: format!("invalid numeric literal"),
+                desc: "invalid numeric literal".into(),
             });
         }
-        return ret;
+        ret
     }
 
     fn integer(&mut self, start: usize, allow_leading_zeros: bool,
@@ -592,7 +591,7 @@ impl<'a> Parser<'a> {
                         self.errors.push(ParserError {
                             lo: start,
                             hi: pos,
-                            desc: format!("leading zeroes are not allowed"),
+                            desc: "leading zeroes are not allowed".into(),
                         });
                         return None
                     }
@@ -607,7 +606,7 @@ impl<'a> Parser<'a> {
                 self.errors.push(ParserError {
                     lo: pos,
                     hi: pos,
-                    desc: format!("expected start of a numeric literal"),
+                    desc: "expected start of a numeric literal".into(),
                 });
                 return None;
             }
@@ -632,9 +631,9 @@ impl<'a> Parser<'a> {
             self.errors.push(ParserError {
                 lo: pos,
                 hi: pos,
-                desc: format!("numeral cannot end with an underscore"),
+                desc: "numeral cannot end with an underscore".into(),
             });
-            return None
+            None
         } else {
             Some(s)
         }
@@ -666,7 +665,7 @@ impl<'a> Parser<'a> {
 
     fn datetime(&mut self, start: usize, end_so_far: usize) 
                 -> Option<DocValue> {
-        let mut date = format!("{}", &self.input[start..end_so_far]);
+        let mut date = self.input[start..end_so_far].to_owned();
         for _ in 0..15 {
             match self.cur.next() {
                 Some((_, ch)) => date.push(ch),
@@ -674,7 +673,7 @@ impl<'a> Parser<'a> {
                     self.errors.push(ParserError {
                         lo: start,
                         hi: end_so_far,
-                        desc: format!("malformed date literal"),
+                        desc: "malformed date literal".into(),
                     });
                     return None
                 }
@@ -686,7 +685,7 @@ impl<'a> Parser<'a> {
             self.errors.push(ParserError {
                 lo: start,
                 hi: start + date.len(),
-                desc: format!("malformed date literal"),
+                desc: "malformed date literal".into(),
             });
             None
         }
@@ -728,7 +727,7 @@ impl<'a> Parser<'a> {
             self.skip_trivia();
             if self.eat(']') {
                 let mut trail_aux = self.take_trivia();
-                if ret.len() > 0 {
+                if !ret.is_empty() {
                     trail_aux = format!(",{}", trail_aux);
                 }
                 return Some(DocValue::InlineArray(
@@ -745,7 +744,7 @@ impl<'a> Parser<'a> {
             let lead = self.take_trivia();
             let mut value = try!(self.value());
             let end = self.next_pos();
-            let expected = type_str.unwrap_or(value.value.type_str());
+            let expected = type_str.unwrap_or_else(|| value.value.type_str());
             if value.value.type_str() != expected {
                 self.errors.push(ParserError {
                     lo: start,
@@ -764,7 +763,7 @@ impl<'a> Parser<'a> {
             if !self.eat(',') { break }
         }
         if !self.expect(']') { return None }
-        return Some(DocValue::InlineArray(
+        Some(DocValue::InlineArray(
             InlineArrayData { values: ret, comma_trail: "".to_string() }
         ))
     }
@@ -788,7 +787,7 @@ impl<'a> Parser<'a> {
             if !self.expect(',') { return None }
             trail = self.eat_ws();
         }
-        return Some(DocValue::new_table(ret, String::new()))
+        Some(DocValue::new_table(ret, String::new()))
     }
 
     fn insert(&mut self, into: &mut ValuesMap, key: FormattedKey,
@@ -814,8 +813,9 @@ impl<'a> Parser<'a> {
         if key_idx == keys.len() - 1 { 
             return f(cur, keys);
         }
-        match cur.direct.map(|x| x.kvp_index.entry(keys[key_idx].escaped.clone())) {
-            Some(Entry::Occupied(mut entry)) => {
+        if let Some(Entry::Occupied(mut entry)) =
+            cur.direct.map(|x| x.kvp_index.entry(keys[key_idx].escaped.clone())) {
+                #[cfg_attr(feature = "cargo-clippy", allow(match_ref_pats))]
                 match &mut entry.get_mut().borrow_mut().value.value {
                     &mut DocValue::InlineTable(TableData { ref mut values, .. }) => {
                         let next = values.traverse();
@@ -851,8 +851,6 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            _ => { }
-        }
         match cur.indirect.entry(keys[key_idx].escaped.clone()) {
             Entry::Occupied(mut entry) => match *entry.get_mut() {
                 IndirectChild::ImplicitTable(ref mut map) => {
@@ -864,7 +862,7 @@ impl<'a> Parser<'a> {
                     Parser::insert_exec_recurse(c_data.traverse(), cnt_idx, arrays, keys, key_idx+1, f)
                 }
                 IndirectChild::Array(ref mut vec) => {
-                    let insert_idx = if let Some(ref map) = arrays {
+                    let insert_idx = if let Some(map) = arrays {
                         let idx = vec.binary_search_by(|cnt| map[&(&*cnt.borrow() as *const Container)].cmp(&cnt_idx));
                         idx.map(|x| x - 1).unwrap_or_else(|x| x)
                     } else if cnt_idx == 0 {
@@ -934,12 +932,12 @@ impl<'a> Parser<'a> {
         }
         else {
             let keys = &container.borrow().keys;
-            return Result::Err(ParserError {
+            Result::Err(ParserError {
                 lo: 0,
                 hi: 0,
                 desc: format!("redefinition of table `{}`",
                               &*keys.vec.last().as_ref().unwrap().escaped),
-            });
+            })
         }
     }
 
@@ -950,7 +948,7 @@ impl<'a> Parser<'a> {
         Result::Ok(container)
     }
 
-    fn last_key_text(keys: &Vec<FormattedKey>) -> String {
+    fn last_key_text(keys: &[FormattedKey]) -> String {
         keys.last().as_ref().unwrap().escaped.clone()
     }
 
@@ -962,9 +960,7 @@ impl<'a> Parser<'a> {
             let key_text = Parser::last_key_text(&keys);
             if let Some(map) = seg.direct {
                 if map.kvp_index.contains_key(&*key_text) {
-                    let is_table = map.kvp_index
-                                      .get(&*key_text)
-                                      .unwrap()
+                    let is_table = map.kvp_index[&*key_text]
                                       .borrow()
                                       .value
                                       .value
@@ -1008,17 +1004,17 @@ impl<'a> Parser<'a> {
             IndirectChild::ExplicitTable(_)
             | IndirectChild::ImplicitTable(_) => {
                 let keys = &container.borrow().keys;
-                return Result::Err(ParserError {
+                Result::Err(ParserError {
                     lo: 0,
                     hi: 0,
                     desc:
                         format!(
                             "key `{}` was previously not an array",
                             Parser::last_key_text(&keys.vec)),
-                });
+                })
             }
             IndirectChild::Array(ref mut vec) => {
-                let insert_idx = if let Some(ref map) = arrays {
+                let insert_idx = if let Some(map) = arrays {
                     let idx = vec.binary_search_by(|cnt| map[&(&*cnt.borrow() as *const Container)].cmp(&cnt_idx));
                     idx.unwrap_or_else(|x| x)
                 } else if cnt_idx == 0 {

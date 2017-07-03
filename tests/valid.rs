@@ -1,9 +1,8 @@
-extern crate rustc_serialize;
+extern crate serde_json;
 extern crate toml_document;
 
-use std::collections::BTreeMap;
-
-use rustc_serialize::json::Json;
+use serde_json::Value as Json;
+use serde_json::Map as JsonMap;
 
 use toml_document::{EntryRef, Document};
 
@@ -11,49 +10,49 @@ type LogicalValues<'a> = Box<Iterator<Item = (&'a str, EntryRef<'a>)> + 'a>;
 
 fn val_to_json((key, value): (&str, EntryRef)) -> (String, Json) {
   fn typed_json(s: &str, json: Json) -> Json {
-    let mut map = BTreeMap::new();
-        map.insert(format!("{}", "type"), Json::String(format!("{}", s)));
-        map.insert(format!("{}", "value"), json);
+    let mut map = JsonMap::new();
+        map.insert("type".to_owned(), Json::String(s.into()));
+        map.insert("value".to_owned(), json);
         Json::Object(map)
   }
-  match &value {
-    &EntryRef::String(ref s) => {
+  match value {
+    EntryRef::String(s) => {
         let json_string = Json::String(s.get().to_owned());
         (key.to_owned(), typed_json("string", json_string))
     }
-    &EntryRef::Integer(i) => {
+    EntryRef::Integer(i) => {
         let json_string = Json::String(format!("{}", i.get()));
         (key.to_owned(), typed_json("integer", json_string))
     }
-    &EntryRef::Float(f) => {
+    EntryRef::Float(f) => {
         let json_string = Json::String({
             let s = format!("{:.15}", f.get());
-            let s = format!("{}", s.trim_right_matches('0'));
-            if s.ends_with(".") {format!("{}0", s)} else {s}
+            let s = s.trim_right_matches('0').to_owned();
+            if s.ends_with('.') {format!("{}0", s)} else {s}
         });
         (key.to_owned(), typed_json("float", json_string))
     }
-    &EntryRef::Boolean(b) => {
+    EntryRef::Boolean(b) => {
         let json_string = Json::String(format!("{}", b.get()));
         (key.to_owned(), typed_json("bool", json_string))
     }
-    &EntryRef::Datetime(d) => {
+    EntryRef::Datetime(d) => {
         let json_string = Json::String(d.get().to_owned());
         (key.to_owned(), typed_json("datetime", json_string))
     }
-    &EntryRef::Array(arr) => {
+    EntryRef::Array(arr) => {
         let is_table = match arr.iter().next() {
         Some(EntryRef::Table(..)) => true,
             _ => false,
         };
-        let json = Json::Array(arr.iter().map(|e| val_to_json((&"", e)).1).collect::<Vec<_>>());
+        let json = Json::Array(arr.iter().map(|e| val_to_json(("", e)).1).collect::<Vec<_>>());
         if is_table {
             (key.to_owned(), json)
         } else {
             (key.to_owned(), typed_json("array", json))
         }
     }
-    &EntryRef::Table(ref table) => {
+    EntryRef::Table(ref table) => {
       (key.to_owned(), to_json(table.iter()))
     },
   }
@@ -69,12 +68,9 @@ fn run(toml: &str, json: &str) {
     let doc = doc.unwrap();
 
     // compare logical structure with jsons
-    let json = Json::from_str(json).unwrap();
+    let json: Json = serde_json::from_str(json).unwrap();
     let toml_json = to_json(doc.iter());
-    assert!(json == toml_json,
-            "expected\n{}\ngot\n{}\n",
-            json.pretty(),
-            toml_json.pretty());
+    assert_eq!(json, toml_json);
 
     // check indexability of children
     for (idx, child) in doc.iter_children().enumerate() {

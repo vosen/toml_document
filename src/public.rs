@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::slice;
 use std::str::Chars;
 
+
 use super::{check_ws, eat_before_newline, eat_newline};
 use super::{MALFORMED_LEAD_MSG, MALFORMED_TRAIL_MSG};
 use parser::{Parser, ParserError};
@@ -21,22 +22,22 @@ macro_rules! define_view {
 
         impl $name {
             #[allow(dead_code)]
-            fn new<'a>(src: &'a $inner) -> &'a $name {
+            fn new(src: &$inner) -> &$name {
                 unsafe { ::std::mem::transmute(src) }
             }
 
             #[allow(dead_code)]
-            fn new_mut<'a>(src: &'a mut $inner) -> &'a mut $name {
+            fn new_mut(src: &mut $inner) -> &mut $name {
                 unsafe { ::std::mem::transmute(src) }
             }
 
             #[allow(dead_code)]
-            fn new_slice<'a>(src: &'a [$inner]) -> &'a [$name] {
+            fn new_slice(src: &[$inner]) -> &[$name] {
                 unsafe { ::std::mem::transmute(src) }
             }
 
             #[allow(dead_code)]
-            fn new_slice_mut<'a>(src: &'a mut [$inner]) -> &'a mut [$name] {
+            fn new_slice_mut(src: &mut [$inner]) -> &mut [$name] {
                 unsafe { ::std::mem::transmute(src) }
             }
         }
@@ -91,12 +92,7 @@ enum IndirectPos<'a> {
 
 impl Document {
     pub fn new() -> Document {
-        Document {
-            values: ValuesMap::new(),
-            container_list: Vec::new(),
-            container_index: HashMap::new(),
-            trail: String::new(),
-        }
+        Default::default()
     }
 
     pub fn parse(text: &str) -> Result<Document, ParserError> {
@@ -129,6 +125,10 @@ impl Document {
         self.values.len() + self.container_index.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn iter<'a>(&'a self)
                             -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
         iter_logical(&self.values, &self.container_index)
@@ -155,6 +155,7 @@ impl Document {
     }
 
     pub fn get_container_mut(&mut self, idx: usize) -> &mut Container {
+        #[cfg_attr(feature = "cargo-clippy", allow(unnecessary_mut_passed))]
         unsafe { Container::new_mut(&mut self.container_list[idx]) }
     }
 
@@ -173,7 +174,7 @@ impl Document {
     }
 
     fn is_child_at_end(&self, idx: usize) -> bool {
-        self.container_list.len() == 0 && idx == self.values.len() - 1
+        self.container_list.is_empty() && idx == self.values.len() - 1
     }
 
     fn adjust_trivia(&mut self, idx: usize) {
@@ -181,7 +182,7 @@ impl Document {
             self.values.get_at_mut(idx).value.markup.trail = "\n".to_owned();
         } else if idx > 0 {
             let mut prev_child = self.values.get_at_mut(idx - 1);
-            if !prev_child.value.markup.trail.ends_with("\n")
+            if !prev_child.value.markup.trail.ends_with('\n')
                && !prev_child.value.markup.trail.ends_with("\r\n") {
                 prev_child.value.markup.trail.push_str("\n");
             }
@@ -261,7 +262,7 @@ impl Document {
                                   where K:Iterator<Item=S>, S:Into<String> {
         let keys: Vec<_> = keys.map(|x| FormattedKey::new_escaped(x.into()))
                                .collect();
-        if keys.len() == 0 {
+        if keys.is_empty() {
             panic!("Invalid parameter `keys`. Collection cannot be empty")
         }
         let real_idx = idx - self.values.len();
@@ -348,7 +349,7 @@ impl Document {
                           .map(|key| key.escaped.clone())
                           .collect::<Vec<_>>();
         let indirect = Document::get_indirect(Document::unpack(removed).data);
-        if indirect.len() > 0 {
+        if !indirect.is_empty() {
             unsafe { &mut*parent }.insert(keys[keys.len() - 1].clone(),
                                           IndirectChild::ImplicitTable(indirect));
         } else {
@@ -545,10 +546,10 @@ impl Document {
                             .unwrap_or(None);
             match remov {
                 Some(true) => { cmap.remove(&path[0]); Some(!explicit) }
-                        opt @ _ => opt
+                        opt => opt
             }
         }
-        if path.len() == 0 {
+        if path.is_empty() {
             Some(true)
         } else if path.len() == 1 {
             let found = match current {
@@ -591,6 +592,7 @@ impl Document {
                 }
                 IndirectPos::Container(&mut IndirectChild::Array(ref mut vec)) => {
                     let mut result = None;
+                    #[cfg_attr(feature = "cargo-clippy", allow(toplevel_ref_arg))]
                     for ref mut child in vec.iter_mut() {
                         let mut cmap = &mut child.borrow_mut().data;
                         let removed = remove_inner(&mut cmap.indirect, source, path, true);
@@ -609,7 +611,7 @@ impl Document {
     fn get_indirect(container: ContainerData) -> HashMap<String, IndirectChild> {
         drop(container.direct.kvp_index);
         let mut map = container.indirect;
-        for node in container.direct.kvp_list.into_iter() {
+        for node in container.direct.kvp_list {
             let node = Document::unpack(node);
             if let Value::InlineTable(table)  = node.value.value {
                 let indirect = IndirectChild::ImplicitTable(Document::get_indirect(table.values));
@@ -627,7 +629,7 @@ impl Document {
             let orphaned_trivia = Document::orphaned_trivia_value(removed);
             if idx < child_count - 1 {
                 self.pass_trivia_to_value(idx, orphaned_trivia);
-            } else if self.container_list.len() > 0 {
+            } else if !self.container_list.is_empty() {
                 self.pass_trivia_to_container(0, orphaned_trivia);
             } else {
                 self.pass_trivia_to_document(orphaned_trivia);
@@ -735,7 +737,7 @@ impl DirectChild {
     }
 
     pub fn key(&self) -> &KeyMarkup {
-        &KeyMarkup::new(&self.0.key)
+        KeyMarkup::new(&self.0.key)
     }
 
     pub fn value(&self) -> ValueRef {
@@ -785,6 +787,7 @@ impl<'a> ValueRef<'a> {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry(self) -> EntryRef<'a> {
         match self {
             ValueRef::String(val) => EntryRef::String(val),
@@ -848,17 +851,18 @@ impl<'a> ValueRefMut<'a> {
     }
 
     pub fn unmut(&'a self) -> ValueRef<'a> {
-        match self {
-            &ValueRefMut::String(ref val) => ValueRef::String(val),
-            &ValueRefMut::Integer(ref val) => ValueRef::Integer(val),
-            &ValueRefMut::Float(ref val) => ValueRef::Float(val),
-            &ValueRefMut::Boolean(ref val) => ValueRef::Boolean(val),
-            &ValueRefMut::Datetime(ref val) => ValueRef::Datetime(val),
-            &ValueRefMut::Array(ref arr) => ValueRef::Array(arr),
-            &ValueRefMut::Table(ref table) => ValueRef::Table(table),
+        match *self {
+            ValueRefMut::String(ref val) => ValueRef::String(val),
+            ValueRefMut::Integer(ref val) => ValueRef::Integer(val),
+            ValueRefMut::Float(ref val) => ValueRef::Float(val),
+            ValueRefMut::Boolean(ref val) => ValueRef::Boolean(val),
+            ValueRefMut::Datetime(ref val) => ValueRef::Datetime(val),
+            ValueRefMut::Array(ref arr) => ValueRef::Array(arr),
+            ValueRefMut::Table(ref table) => ValueRef::Table(table),
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry(self) -> EntryRefMut<'a> {
         match self {
             ValueRefMut::String(val) => val.to_entry_mut(),
@@ -985,7 +989,8 @@ impl ValueNode {
         }
     }
 
-    fn as_cursor<'a>(r: &'a RefCell<Self>) -> EntryRef<'a> {
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
+    fn as_cursor(r: &RefCell<Self>) -> EntryRef {
         match r.borrow().value.value  {
             Value::String(..) => {
                 EntryRef::String(
@@ -1045,7 +1050,8 @@ impl ValueNode {
         }
     }
 
-    fn as_cursor_mut<'a>(r: &'a RefCell<Self>) -> EntryRefMut<'a> {
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
+    fn as_cursor_mut(r: &RefCell<Self>) -> EntryRefMut {
         let val_ref = r.borrow();
         match val_ref.value.value {
             Value::String(..) => {
@@ -1119,6 +1125,7 @@ impl Container {
         transmute_lifetime(&*src.borrow())
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(mut_from_ref))]
     unsafe fn new_mut(src: &Rc<RefCell<Container>>) -> &mut Container {
         transmute_lifetime_mut(&mut *src.borrow_mut())
     }
@@ -1161,12 +1168,12 @@ impl Container {
     }
 
     pub fn keys(&self) -> &ContainerKeysMarkup {
-        &ContainerKeysMarkup::new(&self)
+        ContainerKeysMarkup::new(self)
     }
 
     fn adjust_trivia(&mut self, idx: usize) {
         // TODO: Mark last container
-        if idx == 0 && self.data.direct.len() == 1 && self.keys.trail.len() == 0 {
+        if idx == 0 && self.data.direct.len() == 1 && self.keys.trail.is_empty() {
             self.keys.trail = "\n".to_owned();
         }
         self.data.direct.get_at_mut(idx).value.markup.trail = "\n".to_owned();
@@ -1240,6 +1247,7 @@ impl Container {
         )
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> EntryRefMut {
         EntryRefMut::Table(
             TableEntryMut {
@@ -1279,15 +1287,15 @@ impl super::ContainerData {
 
 impl IndirectChild {
     fn as_cursor(&self) -> EntryRef {
-        match self {
-            &IndirectChild::ImplicitTable(ref map) => {
+        match *self {
+            IndirectChild::ImplicitTable(ref map) => {
                 EntryRef::Table(
                     TableEntry {
                         data: Table::Implicit(map)
                     }
                 )
             }
-            &IndirectChild::ExplicitTable(ref container) => {
+            IndirectChild::ExplicitTable(ref container) => {
                 EntryRef::Table(
                     TableEntry {
                         data: Table::Explicit(
@@ -1296,10 +1304,10 @@ impl IndirectChild {
                     }
                 )
             }
-            &IndirectChild::Array(ref arr) => {
+            IndirectChild::Array(ref arr) => {
                 EntryRef::Array(
                     ArrayEntry {
-                        data: Array::Explicit(&arr)
+                        data: Array::Explicit(arr)
                     }
                 )
             }
@@ -1415,6 +1423,7 @@ impl BoolValue {
         EntryRef::Boolean(self)
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> EntryRefMut {
         EntryRefMut::Boolean(self)
     }
@@ -1426,12 +1435,13 @@ impl_value_markup!(StringValue);
 impl StringValue {
     pub fn get(&self) -> &str {
         match self.0.value {
-            Value::String(ref data) => &data.get(),
+            Value::String(ref data) => data.get(),
             _ => unreachable!()
         }
     }
 
     pub fn set(&mut self, s: String) {
+        #[cfg_attr(feature = "cargo-clippy", allow(match_ref_pats))]
         match &mut self.0.value {
             &mut Value::String(ref mut data) => data.set_checked(s),
             _ => unreachable!()
@@ -1449,6 +1459,7 @@ impl StringValue {
         EntryRef::String(self)
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> EntryRefMut {
         EntryRefMut::String(self)
     }
@@ -1475,7 +1486,7 @@ impl FloatValue {
 
     pub fn raw(&self) -> &str {
         match self.0.value {
-            Value::Float{ ref raw, .. } => &raw,
+            Value::Float{ ref raw, .. } => raw,
             _ => unreachable!()
         }
     }
@@ -1484,6 +1495,7 @@ impl FloatValue {
         EntryRef::Float(self)
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> EntryRefMut {
         EntryRefMut::Float(self)
     }
@@ -1510,7 +1522,7 @@ impl IntegerValue {
 
     pub fn raw(&self) -> &str {
         match self.0.value {
-            Value::Integer{ ref raw, .. } => &raw,
+            Value::Integer{ ref raw, .. } => raw,
             _ => unreachable!()
         }
     }
@@ -1519,6 +1531,7 @@ impl IntegerValue {
         EntryRef::Integer(self)
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> EntryRefMut {
         EntryRefMut::Integer(self)
     }
@@ -1530,7 +1543,7 @@ impl_value_markup!(DatetimeValue);
 impl DatetimeValue {
     pub fn get(&self) -> &str {
         match self.0.value {
-            Value::Datetime(ref value) => &value,
+            Value::Datetime(ref value) => value,
             _ => unreachable!()
         }
     }
@@ -1539,6 +1552,7 @@ impl DatetimeValue {
         EntryRef::Datetime(self)
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> EntryRefMut {
         EntryRefMut::Datetime(self)
     }
@@ -1587,6 +1601,10 @@ impl InlineArray {
 
     pub fn len(&self) -> usize {
         self.data().values.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn get(&self, idx: usize) -> ValueRef {
@@ -1676,7 +1694,7 @@ impl InlineArray {
         self.data().values
                    .iter()
                    .position(|vn| {
-                        let ptr = &vn as &FormattedValue as *const _ as usize;
+                        let ptr = vn as &FormattedValue as *const _ as usize;
                         ptr == token
                     })
     }
@@ -1689,6 +1707,7 @@ impl InlineArray {
         )
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> EntryRefMut {
         EntryRefMut::Array(
             ArrayEntryMut {
@@ -1767,33 +1786,37 @@ impl<'a> TableEntry<'a> {
 
     pub fn len_children(self) -> usize {
         match self.data {
-            Table::Inline(ref data) => data.len(),
+            Table::Inline(data) => data.len(),
             Table::Implicit(..) => 0,
-            Table::Explicit(ref data) => data.len_children(),
+            Table::Explicit(data) => data.len_children(),
         }
     }
 
     pub fn iter_children(self) -> DirectChildren<'a> {
         match self.data {
-            Table::Inline(ref data) => data.iter(),
+            Table::Inline(data) => data.iter(),
             Table::Implicit(..) => DirectChildren { iter: None },
-            Table::Explicit(ref data) => data.iter_children(),
+            Table::Explicit(data) => data.iter_children(),
         }
     }
 
     pub fn len(self) -> usize {
         match self.data {
-            Table::Inline(ref data) => data.len_all(),
-            Table::Implicit(ref map) => implicit_table_len_logical(map),
-            Table::Explicit(ref data) => data.len_entries(),
+            Table::Inline(data) => data.len_all(),
+            Table::Implicit(map) => implicit_table_len_logical(map),
+            Table::Explicit(data) => data.len_entries(),
         }
+    }
+
+    pub fn is_empty(self) -> bool {
+       self.len() == 0
     }
 
     pub fn iter(self) -> Box<Iterator<Item=(&'a str, EntryRef<'a>)>+'a> {
         match self.data {
-            Table::Inline(ref data) => data.iter_entries(),
-            Table::Implicit(ref map) => implicit_table_iter_logical(map),
-            Table::Explicit(ref data) => data.iter_entries(),
+            Table::Inline(data) => data.iter_entries(),
+            Table::Implicit(map) => implicit_table_iter_logical(map),
+            Table::Explicit(data) => data.iter_entries(),
         }
     }
 
@@ -1805,6 +1828,7 @@ impl<'a> TableEntry<'a> {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry(self) -> EntryRef<'a> {
         EntryRef::Table(self)
     }
@@ -1844,6 +1868,7 @@ impl<'a> TableEntryMut<'a> {
         TableEntry { data: inner }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_value(self) -> TableValueMut<'a> {
         match self.data {
             TableMut::Inline(data) => TableValueMut::Inline(data),
@@ -1852,6 +1877,7 @@ impl<'a> TableEntryMut<'a> {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry(self) -> EntryRefMut<'a> {
         EntryRefMut::Table(self)
     }
@@ -1875,6 +1901,7 @@ pub enum ArrayValue<'a> {
 }
 
 impl<'a> ArrayEntry<'a> {
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_value(self) -> ArrayValue<'a> {
         match self.data {
             Array::Inline(arr) => ArrayValue::Inline(arr),
@@ -1887,6 +1914,10 @@ impl<'a> ArrayEntry<'a> {
             Array::Inline(data) => data.len(),
             Array::Explicit(vec) => vec.len()
         }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.len() == 0
     }
 
     pub fn get(self, idx: usize) -> EntryRef<'a> {
@@ -1912,6 +1943,7 @@ impl<'a> ArrayEntry<'a> {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry(self) -> EntryRef<'a> {
         EntryRef::Array(self)
     }
@@ -1940,6 +1972,7 @@ impl<'a> ArrayEntryMut<'a> {
         ArrayEntry { data: inner }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_value(self) -> ArrayValueMut<'a> {
         match self.data {
             ArrayMut::Inline(data) => ArrayValueMut::Inline(data),
@@ -1947,6 +1980,7 @@ impl<'a> ArrayEntryMut<'a> {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry(self) -> EntryRefMut<'a> {
         EntryRefMut::Array(self)
     }
@@ -1983,6 +2017,10 @@ impl InlineTable {
 
     pub fn len(&self) -> usize {
         self.data().values.direct.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     fn len_all(&self) -> usize {
@@ -2096,6 +2134,7 @@ impl InlineTable {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
     pub fn to_entry_mut(&mut self) -> TableEntryMut {
         TableEntryMut {
             data: TableMut::Inline(self)
@@ -2113,8 +2152,9 @@ fn implicit_table_get_mut<'a>(t: &'a mut HashMap<String, IndirectChild>,
                               key: &str) -> Option<EntryRefMut<'a>> {
     t.get_mut(key).map(IndirectChild::as_cursor_mut)
 }
-fn implicit_table_len_logical<'a>(t: &'a HashMap<String, IndirectChild>)
-                                  -> usize {
+
+fn implicit_table_len_logical(t: &HashMap<String, IndirectChild>)
+                              -> usize {
     t.len()
 }
 
@@ -2209,6 +2249,7 @@ impl KeyMarkup {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(should_assert_eq))]
 fn eat_eof(mut chars: Peekable<Chars>, error: &'static str) {
     assert!(chars.next() == None, error);
 }
